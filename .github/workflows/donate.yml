@@ -15,7 +15,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install requests beautifulsoup4
+        run: pip install playwright requests
+
+      - name: Install Chromium
+        run: playwright install chromium --with-deps
 
       - name: Scrape and send blood donation images
         env:
@@ -23,22 +26,15 @@ jobs:
           CHAT_ID: ${{ github.event.client_payload.chat_id }}
         run: |
           python3 << 'EOF'
-          import requests
-          from bs4 import BeautifulSoup
-          import os
-          import sys
+          from playwright.sync_api import sync_playwright
+          import requests, os, sys, io
 
           BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
           CHAT_ID   = os.environ["CHAT_ID"]
           BASE_URL  = "https://www.tp.blood.org.tw"
           LIST_URL  = f"{BASE_URL}/Internet/taipei/leafLet.aspx?xsmsid=0P062646965467323284"
-
-          HEADERS = {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-              "Referer": BASE_URL,
-              "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-              "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-          }
+          XSMSID    = "0P062646965467323284"
+          SKIP_KW   = ("logo", "icon", "btn", "button", "banner_top", "header", "footer", "bg_")
 
           def send_message(text):
               requests.post(
@@ -47,88 +43,88 @@ jobs:
                   timeout=15,
               )
 
-          def send_photo(url):
-              resp = requests.post(
+          def send_photo_bytes(data, filename="donate.jpg"):
+              requests.post(
                   f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
-                  json={"chat_id": CHAT_ID, "photo": url},
-                  timeout=15,
+                  data={"chat_id": CHAT_ID},
+                  files={"photo": (filename, io.BytesIO(data), "image/jpeg")},
+                  timeout=30,
               )
-              return resp.ok
 
-          # Step 1: Fetch listing page to find the latest week's link
-          print(f"Fetching listing page: {LIST_URL}")
-          try:
-              resp = requests.get(LIST_URL, headers=HEADERS, timeout=15)
-              resp.raise_for_status()
-          except Exception as e:
-              send_message(f"無法取得捐血活動列表，請稍後再試。\n({e})")
-              sys.exit(1)
-
-          soup = BeautifulSoup(resp.text, "html.parser")
-
-          # Find all links pointing to xmdoc/cont with matching xsmsid
-          links = [
-              a["href"] for a in soup.find_all("a", href=True)
-              if "xmdoc/cont" in a["href"] and "xsmsid=0P062646965467323284" in a["href"]
-          ]
-
-          if not links:
-              send_message("目前找不到捐血活動資訊，請稍後再試。")
-              sys.exit(0)
-
-          # Take the first (latest) link
-          latest_href = links[0]
-          latest_url = (BASE_URL + latest_href) if latest_href.startswith("/") else latest_href
-          print(f"Latest week URL: {latest_url}")
-
-          # Step 2: Fetch the week's activity page
-          try:
-              resp2 = requests.get(
-                  latest_url,
-                  headers={**HEADERS, "Referer": LIST_URL},
-                  timeout=15,
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              ctx = browser.new_context(
+                  user_agent=(
+                      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                  ),
+                  locale="zh-TW",
+                  viewport={"width": 1280, "height": 900},
               )
-              resp2.raise_for_status()
-          except Exception as e:
-              send_message(f"無法取得本週捐血活動頁面，請稍後再試。\n({e})")
-              sys.exit(1)
+              page = ctx.new_page()
 
-          soup2 = BeautifulSoup(resp2.text, "html.parser")
+              # Step 1: Navigate to listing page, find latest week's link
+              print(f"Navigating to listing: {LIST_URL}")
+              try:
+                  page.goto(LIST_URL, wait_until="networkidle", timeout=30000)
+              except Exception as e:
+                  send_message(f"無法取得捐血活動列表，請稍後再試。\n({e})")
+                  browser.close()
+                  sys.exit(1)
 
-          # Step 3: Extract image URLs, skip navigation/UI images
-          SKIP_KEYWORDS = ("logo", "icon", "btn", "button", "banner_top", "header", "footer")
-          image_urls = []
-          for img in soup2.find_all("img"):
-              src = img.get("src", "").strip()
-              if not src:
-                  continue
-              src_lower = src.lower()
-              if any(kw in src_lower for kw in SKIP_KEYWORDS):
-                  continue
-              if src.startswith("/"):
-                  src = BASE_URL + src
-              if not src.startswith("http"):
-                  continue
-              if src not in image_urls:
-                  image_urls.append(src)
+              links = page.locator(
+                  f"a[href*='xmdoc/cont'][href*='xsmsid={XSMSID}']"
+              ).all()
 
-          print(f"Found {len(image_urls)} image(s): {image_urls}")
+              if not links:
+                  send_message("目前找不到捐血活動資訊，請稍後再試。")
+                  browser.close()
+                  sys.exit(0)
 
-          if not image_urls:
-              send_message("本週尚無捐血活動圖片。")
-              sys.exit(0)
+              href = links[0].get_attribute("href")
+              latest_url = (BASE_URL + href) if href.startswith("/") else href
+              print(f"Latest week URL: {latest_url}")
 
-          # Step 4: Send each image to Telegram
-          sent = 0
-          for url in image_urls:
-              print(f"Sending photo: {url}")
-              if send_photo(url):
-                  sent += 1
-              else:
-                  print(f"  Failed to send: {url}")
+              # Step 2: Navigate to week's page and extract images
+              try:
+                  page.goto(latest_url, wait_until="networkidle", timeout=30000)
+              except Exception as e:
+                  send_message(f"無法取得本週捐血活動頁面，請稍後再試。\n({e})")
+                  browser.close()
+                  sys.exit(1)
+
+              image_urls = []
+              for img in page.locator("img").all():
+                  src = (img.get_attribute("src") or "").strip()
+                  if not src or any(kw in src.lower() for kw in SKIP_KW):
+                      continue
+                  if src.startswith("/"):
+                      src = BASE_URL + src
+                  if src.startswith("http") and src not in image_urls:
+                      image_urls.append(src)
+
+              print(f"Found {len(image_urls)} image(s): {image_urls}")
+
+              if not image_urls:
+                  send_message("本週尚無捐血活動圖片。")
+                  browser.close()
+                  sys.exit(0)
+
+              # Step 3: Download via browser context (inherits cookies) and upload to Telegram
+              sent = 0
+              for i, url in enumerate(image_urls):
+                  print(f"Downloading: {url}")
+                  dl = ctx.request.get(url, timeout=20000)
+                  if dl.ok:
+                      send_photo_bytes(dl.body(), f"donate_{i}.jpg")
+                      sent += 1
+                  else:
+                      print(f"  Download failed with status {dl.status}: {url}")
+
+              browser.close()
 
           if sent == 0:
               send_message("圖片傳送失敗，請稍後再試。")
           else:
-              print(f"Successfully sent {sent}/{len(image_urls)} image(s).")
+              print(f"Done: sent {sent}/{len(image_urls)} image(s).")
           EOF
