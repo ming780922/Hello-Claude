@@ -1,0 +1,10 @@
+name = "hello-claude-telegram-bot"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+GITHUB_REPO = "ming780922/Hello-Claude"
+
+# 敏感變數請用 wrangler secret put 設定，不要寫在這裡：
+# TELEGRAM_BOT_TOKEN
+# GITHUB_TOKEN
