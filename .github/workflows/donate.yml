@@ -27,13 +27,13 @@ jobs:
         run: |
           python3 << 'EOF'
           from playwright.sync_api import sync_playwright
+          from datetime import date, timedelta
           import requests, os, sys, io
 
           BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
           CHAT_ID   = os.environ["CHAT_ID"]
           BASE_URL  = "https://www.tp.blood.org.tw"
           LIST_URL  = f"{BASE_URL}/Internet/taipei/leafLet.aspx?xsmsid=0P062646965467323284"
-          XSMSID    = "0P062646965467323284"
           SKIP_KW   = ("logo", "icon", "btn", "button", "banner_top", "header", "footer", "bg_")
 
           def send_message(text):
@@ -51,6 +51,29 @@ jobs:
                   timeout=30,
               )
 
+          # ── 計算目標週末 ─────────────────────────────────────
+          today   = date.today()
+          weekday = today.weekday()  # Mon=0 … Sat=5, Sun=6
+
+          if weekday == 6:           # 週日 → 本週末的週六是昨天
+              target_sat = today - timedelta(days=1)
+          elif weekday == 5:         # 週六 → 今天就是本週末
+              target_sat = today
+          else:                      # 週一~週五 → 即將到來的週六
+              target_sat = today + timedelta(days=(5 - weekday))
+
+          target_sun   = target_sat + timedelta(days=1)
+          fallback_sat = target_sat - timedelta(days=7)
+          fallback_sun = fallback_sat + timedelta(days=1)
+
+          def roc_range(sat, sun):
+              """e.g. 2026-03-21, 2026-03-22 → '115.3.21~3.22'"""
+              return f"{sat.year - 1911}.{sat.month}.{sat.day}~{sun.month}.{sun.day}"
+
+          target_str   = roc_range(target_sat,   target_sun)    # e.g. "115.3.21~3.22"
+          fallback_str = roc_range(fallback_sat, fallback_sun)   # e.g. "115.3.14~3.15"
+          print(f"Looking for: {target_str} (fallback: {fallback_str})")
+
           with sync_playwright() as p:
               browser = p.chromium.launch(headless=True)
               ctx = browser.new_context(
@@ -63,7 +86,7 @@ jobs:
               )
               page = ctx.new_page()
 
-              # Step 1: Navigate to listing page, find latest week's link
+              # Step 1: 列表頁 → 依日期字串找最近週末的連結
               print(f"Navigating to listing: {LIST_URL}")
               try:
                   page.goto(LIST_URL, wait_until="networkidle", timeout=30000)
@@ -72,24 +95,31 @@ jobs:
                   browser.close()
                   sys.exit(1)
 
-              links = page.locator(
-                  f"a[href*='xmdoc/cont'][href*='xsmsid={XSMSID}']"
-              ).all()
+              href = None
+              matched_date_str = None
+              for date_str in [target_str, fallback_str]:
+                  loc = page.locator(f"a:has-text('{date_str}')")
+                  if loc.count() > 0:
+                      href = loc.first.get_attribute("href")
+                      matched_date_str = date_str
+                      print(f"Matched activity: {date_str}")
+                      break
 
-              if not links:
-                  send_message("目前找不到捐血活動資訊，請稍後再試。")
+              if not href:
+                  send_message(
+                      f"找不到 {target_str} 或 {fallback_str} 的捐血活動，請稍後再試。"
+                  )
                   browser.close()
                   sys.exit(0)
 
-              href = links[0].get_attribute("href")
               latest_url = (BASE_URL + href) if href.startswith("/") else href
-              print(f"Latest week URL: {latest_url}")
+              print(f"Activity URL: {latest_url}")
 
-              # Step 2: Navigate to week's page and extract images
+              # Step 2: 活動頁萃取圖片
               try:
                   page.goto(latest_url, wait_until="networkidle", timeout=30000)
               except Exception as e:
-                  send_message(f"無法取得本週捐血活動頁面，請稍後再試。\n({e})")
+                  send_message(f"無法取得捐血活動頁面，請稍後再試。\n({e})")
                   browser.close()
                   sys.exit(1)
 
@@ -110,7 +140,15 @@ jobs:
                   browser.close()
                   sys.exit(0)
 
-              # Step 3: Download via browser context (inherits cookies) and upload to Telegram
+              # Step 3: 發送摘要，再逐張下載並上傳至 Telegram
+              summary = (
+                  f"📋 假日捐血活動\n"
+                  f"📅 週末：{matched_date_str}\n"
+                  f"🖼 共 {len(image_urls)} 張圖片\n"
+                  f"🔗 {latest_url}"
+              )
+              send_message(summary)
+
               sent = 0
               for i, url in enumerate(image_urls):
                   print(f"Downloading: {url}")
