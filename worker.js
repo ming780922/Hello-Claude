@@ -28,39 +28,62 @@ export default {
     const chatId = message.chat?.id;
     const text = message.text ?? "";
 
-    // Only handle /echo command
-    if (!text.startsWith("/echo")) {
-      return new Response("OK");
-    }
+    // Route commands
+    if (text.startsWith("/echo")) {
+      // Extract the message after /echo (strip "/echo" prefix and trim)
+      const echoText = text.replace(/^\/echo\s*/, "").trim() || "(empty)";
 
-    // Extract the message after /echo (strip "/echo" prefix and trim)
-    const echoText = text.replace(/^\/echo\s*/, "").trim() || "(empty)";
-
-    // Trigger GitHub Action via repository_dispatch
-    const githubResponse = await fetch(
-      `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json",
-          "User-Agent": "Cloudflare-Worker-Telegram-Bot",
-        },
-        body: JSON.stringify({
-          event_type: "telegram-echo",
-          client_payload: {
-            chat_id: chatId,
-            text: echoText,
+      const githubResponse = await fetch(
+        `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+            Accept: "application/vnd.github+json",
+            "Content-Type": "application/json",
+            "User-Agent": "Cloudflare-Worker-Telegram-Bot",
           },
-        }),
-      }
-    );
+          body: JSON.stringify({
+            event_type: "telegram-echo",
+            client_payload: {
+              chat_id: chatId,
+              text: echoText,
+            },
+          }),
+        }
+      );
 
-    if (!githubResponse.ok) {
-      const err = await githubResponse.text();
-      console.error("GitHub dispatch failed:", err);
-      return new Response("Internal Server Error", { status: 500 });
+      if (!githubResponse.ok) {
+        const err = await githubResponse.text();
+        console.error("GitHub dispatch failed:", err);
+        return new Response("Internal Server Error", { status: 500 });
+      }
+    } else if (text.startsWith("/donate")) {
+      // Trigger blood donation activity image scraper
+      const githubResponse = await fetch(
+        `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+            Accept: "application/vnd.github+json",
+            "Content-Type": "application/json",
+            "User-Agent": "Cloudflare-Worker-Telegram-Bot",
+          },
+          body: JSON.stringify({
+            event_type: "telegram-donate",
+            client_payload: {
+              chat_id: chatId,
+            },
+          }),
+        }
+      );
+
+      if (!githubResponse.ok) {
+        const err = await githubResponse.text();
+        console.error("GitHub dispatch failed:", err);
+        return new Response("Internal Server Error", { status: 500 });
+      }
     }
 
     return new Response("OK");
