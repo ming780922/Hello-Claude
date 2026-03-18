@@ -9,6 +9,22 @@
 
 export default {
   async fetch(request, env) {
+    // GET 路由：RSS Feed 代理（繞過 PTT IP 封鎖）
+    if (request.method === "GET") {
+      const { pathname } = new URL(request.url);
+      if (pathname === "/rss/LifeIsMoney") {
+        const resp = await fetch("https://www.ptt.cc/atom/LifeIsMoney.xml", {
+          headers: { Cookie: "over18=1", "User-Agent": "Mozilla/5.0" },
+        });
+        if (!resp.ok) return new Response("Bad Gateway", { status: 502 });
+        const xml = await resp.text();
+        return new Response(xml, {
+          headers: { "Content-Type": "application/atom+xml; charset=utf-8" },
+        });
+      }
+      return new Response("Not Found", { status: 404 });
+    }
+
     if (request.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
