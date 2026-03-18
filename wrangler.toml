@@ -8,10 +8,3 @@ GITHUB_REPO = "ming780922/Hello-Claude"
 # 敏感變數請用 wrangler secret put 設定，不要寫在這裡：
 # TELEGRAM_BOT_TOKEN
 # GITHUB_TOKEN
-
-# PTT RSS Feed KV Cache（TTL=5分鐘）
-# 建立方式：wrangler kv:namespace create "PTT_RSS_CACHE"
-# 將輸出的 id 填入下方
-[[kv_namespaces]]
-binding = "PTT_RSS_CACHE"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
