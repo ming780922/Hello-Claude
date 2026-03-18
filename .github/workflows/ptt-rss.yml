@@ -30,8 +30,6 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_DEFAULT_CHAT_ID }}
-          # 透過 Cloudflare Worker 代理取 Feed，繞過 PTT 對 GitHub Actions IP 的封鎖
-          WORKER_URL: ${{ secrets.WORKER_URL }}
         run: |
           python3 << 'EOF'
           import requests, json, os, sys
@@ -40,7 +38,7 @@ jobs:
           BOT_TOKEN  = os.environ["TELEGRAM_BOT_TOKEN"]
           CHAT_ID    = os.environ["CHAT_ID"]
           STATE_FILE = "/tmp/ptt_rss_state.json"
-          FEED_URL   = os.environ["WORKER_URL"].rstrip("/") + "/rss/LifeIsMoney"
+          FEED_URL   = "https://www.ptt.cc/atom/LifeIsMoney.xml"
           NS         = {"atom": "http://www.w3.org/2005/Atom"}
 
           def send_message(text):
@@ -62,7 +60,8 @@ jobs:
 
           # 拉 Feed
           try:
-              resp = requests.get(FEED_URL, timeout=15)
+              headers = {"Cookie": "over18=1", "User-Agent": "Mozilla/5.0"}
+              resp = requests.get(FEED_URL, headers=headers, timeout=15)
               resp.raise_for_status()
           except Exception as e:
               print(f"Feed 取得失敗：{e}")
