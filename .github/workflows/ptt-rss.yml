@@ -30,6 +30,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_DEFAULT_CHAT_ID }}
+          WORKER_URL: ${{ secrets.WORKER_URL }}
         run: |
           python3 << 'EOF'
           import requests, json, os, sys
@@ -38,7 +39,7 @@ jobs:
           BOT_TOKEN  = os.environ["TELEGRAM_BOT_TOKEN"]
           CHAT_ID    = os.environ["CHAT_ID"]
           STATE_FILE = "/tmp/ptt_rss_state.json"
-          FEED_URL   = "https://www.ptt.cc/atom/LifeIsMoney.xml"
+          FEED_URL   = os.environ["WORKER_URL"].rstrip("/") + "/rss/LifeIsMoney"
           NS         = {"atom": "http://www.w3.org/2005/Atom"}
 
           def send_message(text):
