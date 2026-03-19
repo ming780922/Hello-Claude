@@ -1,0 +1,137 @@
+import os
+import sys
+from datetime import date, timedelta
+
+from playwright.sync_api import sync_playwright
+
+from telegram_utils import send_message, send_photo_bytes
+
+BASE_URL = "https://www.tp.blood.org.tw"
+LIST_URL = f"{BASE_URL}/Internet/taipei/leafLet.aspx?xsmsid=0P062646965467323284"
+SKIP_KW  = ("logo", "icon", "btn", "button", "banner_top", "header", "footer", "bg_")
+
+
+def main():
+    token   = os.environ["TELEGRAM_BOT_TOKEN"]
+    chat_id = os.environ["CHAT_ID"]
+
+    # ── 計算目標週末 ─────────────────────────────────────
+    today   = date.today()
+    weekday = today.weekday()  # Mon=0 … Sat=5, Sun=6
+
+    if weekday == 6:           # 週日 → 本週末的週六是昨天
+        target_sat = today - timedelta(days=1)
+    elif weekday == 5:         # 週六 → 今天就是本週末
+        target_sat = today
+    else:                      # 週一~週五 → 即將到來的週六
+        target_sat = today + timedelta(days=(5 - weekday))
+
+    target_sun   = target_sat + timedelta(days=1)
+    fallback_sat = target_sat - timedelta(days=7)
+    fallback_sun = fallback_sat + timedelta(days=1)
+
+    def roc_range(sat, sun):
+        """e.g. 2026-03-21, 2026-03-22 → '115.3.21~3.22'"""
+        return f"{sat.year - 1911}.{sat.month}.{sat.day}~{sun.month}.{sun.day}"
+
+    target_str   = roc_range(target_sat,   target_sun)
+    fallback_str = roc_range(fallback_sat, fallback_sun)
+    print(f"Looking for: {target_str} (fallback: {fallback_str})")
+
+    sent = 0
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        ctx = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            ),
+            locale="zh-TW",
+            viewport={"width": 1280, "height": 900},
+        )
+        page = ctx.new_page()
+
+        # Step 1: 列表頁 → 依日期字串找最近週末的連結
+        print(f"Navigating to listing: {LIST_URL}")
+        try:
+            page.goto(LIST_URL, wait_until="networkidle", timeout=30000)
+        except Exception as e:
+            send_message(token, chat_id, f"無法取得捐血活動列表，請稍後再試。\n({e})")
+            browser.close()
+            sys.exit(1)
+
+        href = None
+        matched_date_str = None
+        for date_str in [target_str, fallback_str]:
+            loc = page.locator(f"a:has-text('{date_str}')")
+            if loc.count() > 0:
+                href = loc.first.get_attribute("href")
+                matched_date_str = date_str
+                print(f"Matched activity: {date_str}")
+                break
+
+        if not href:
+            send_message(
+                token, chat_id,
+                f"找不到 {target_str} 或 {fallback_str} 的捐血活動，請稍後再試。",
+            )
+            browser.close()
+            sys.exit(0)
+
+        latest_url = (BASE_URL + href) if href.startswith("/") else href
+        print(f"Activity URL: {latest_url}")
+
+        # Step 2: 活動頁萃取圖片
+        try:
+            page.goto(latest_url, wait_until="networkidle", timeout=30000)
+        except Exception as e:
+            send_message(token, chat_id, f"無法取得捐血活動頁面，請稍後再試。\n({e})")
+            browser.close()
+            sys.exit(1)
+
+        image_urls = []
+        for img in page.locator("img").all():
+            src = (img.get_attribute("src") or "").strip()
+            if not src or any(kw in src.lower() for kw in SKIP_KW):
+                continue
+            if src.startswith("/"):
+                src = BASE_URL + src
+            if src.startswith("http") and src not in image_urls:
+                image_urls.append(src)
+
+        print(f"Found {len(image_urls)} image(s): {image_urls}")
+
+        if not image_urls:
+            send_message(token, chat_id, "本週尚無捐血活動圖片。")
+            browser.close()
+            sys.exit(0)
+
+        # Step 3: 發送摘要，再逐張下載並上傳至 Telegram
+        summary = (
+            f"📋 假日捐血活動\n"
+            f"📅 週末：{matched_date_str}\n"
+            f"🖼 共 {len(image_urls)} 張圖片\n"
+            f"🔗 {latest_url}"
+        )
+        send_message(token, chat_id, summary)
+
+        for i, url in enumerate(image_urls):
+            print(f"Downloading: {url}")
+            dl = ctx.request.get(url, timeout=20000)
+            if dl.ok:
+                send_photo_bytes(token, chat_id, dl.body(), f"donate_{i}.jpg")
+                sent += 1
+            else:
+                print(f"  Download failed with status {dl.status}: {url}")
+
+        browser.close()
+
+    if sent == 0:
+        send_message(token, chat_id, "圖片傳送失敗，請稍後再試。")
+    else:
+        print(f"Done: sent {sent}/{len(image_urls)} image(s).")
+
+
+if __name__ == "__main__":
+    main()
