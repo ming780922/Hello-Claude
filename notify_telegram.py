@@ -3,7 +3,8 @@ import json
 import os
 import re
 import sys
-import requests
+
+from telegram_utils import send_telegram, send_batched
 
 
 def is_within_hours(update_time: str, hours: int) -> bool:
@@ -21,9 +22,6 @@ def is_within_hours(update_time: str, hours: int) -> bool:
     return False
 
 
-TELEGRAM_MAX_LENGTH = 4096
-
-
 def format_item(item: dict) -> str:
     title = item.get("title", "（無標題）")
     region = item.get("region", "")
@@ -35,32 +33,6 @@ def format_item(item: dict) -> str:
     url = item.get("link", "")
     meta = " · ".join(filter(None, [region, layout, area, floor, price, update_time]))
     return f"🏠 <b>{title}</b>\n{meta}\n{url}"
-
-
-def send_telegram(token: str, chat_id: str, text: str) -> None:
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True,
-    }
-    resp = requests.post(url, json=payload, timeout=10)
-    resp.raise_for_status()
-
-
-def send_batched(token: str, chat_id: str, header: str, items: list[str]) -> None:
-    """Send items as few messages as possible, splitting only when exceeding Telegram's limit."""
-    separator = "\n\n"
-    current = header
-    for item in items:
-        candidate = current + separator + item
-        if len(candidate) > TELEGRAM_MAX_LENGTH:
-            send_telegram(token, chat_id, current)
-            current = item
-        else:
-            current = candidate
-    send_telegram(token, chat_id, current)
 
 
 def main() -> None:

@@ -1,0 +1,72 @@
+import json
+import os
+import sys
+import xml.etree.ElementTree as ET
+
+import requests
+
+from telegram_utils import send_message
+
+STATE_FILE = "/tmp/ptt_rss_state.json"
+NS = {"atom": "http://www.w3.org/2005/Atom"}
+
+
+def main():
+    BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+    CHAT_ID   = os.environ["CHAT_ID"]
+    FEED_URL  = os.environ["WORKER_URL"].rstrip("/") + "/rss/LifeIsMoney"
+
+    # 讀取上次狀態
+    try:
+        with open(STATE_FILE) as f:
+            state = json.load(f)
+    except FileNotFoundError:
+        state = {"seen_ids": []}
+
+    seen_ids = set(state["seen_ids"])
+    is_first_run = len(seen_ids) == 0
+
+    # 拉 Feed
+    try:
+        headers = {"Cookie": "over18=1", "User-Agent": "Mozilla/5.0"}
+        resp = requests.get(FEED_URL, headers=headers, timeout=15)
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"Feed 取得失敗：{e}")
+        sys.exit(1)
+
+    root = ET.fromstring(resp.text)
+    entries = root.findall("atom:entry", NS)
+
+    # 找出新文章（保持順序，由舊到新推播）
+    new_entries = []
+    current_ids = []
+    for entry in entries:
+        eid = entry.findtext("atom:id", namespaces=NS) or ""
+        current_ids.append(eid)
+        if eid and eid not in seen_ids:
+            title   = entry.findtext("atom:title", namespaces=NS) or "(無標題)"
+            link_el = entry.find("atom:link", NS)
+            link    = link_el.get("href") if link_el is not None else ""
+            new_entries.append({"id": eid, "title": title, "link": link})
+
+    if is_first_run:
+        print(f"首次執行，記錄 {len(current_ids)} 篇文章，不推播。")
+    elif new_entries:
+        print(f"發現 {len(new_entries)} 篇新文章，推播中...")
+        for e in reversed(new_entries):  # 由舊到新
+            msg = f"[PTT/LifeIsMoney] {e['title']}\n{e['link']}"
+            r = send_message(BOT_TOKEN, CHAT_ID, msg, raise_on_error=True)
+            print(f"  Telegram 回應：{r.status_code} {r.text}")
+            print(f"  已送出：{e['title']}")
+    else:
+        print("無新文章。")
+
+    # 更新狀態
+    state["seen_ids"] = [eid for eid in current_ids if eid]
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
+
+
+if __name__ == "__main__":
+    main()
