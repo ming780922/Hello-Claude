@@ -55,8 +55,8 @@ def main():
     elif new_entries:
         print(f"發現 {len(new_entries)} 篇新文章，推播中...")
         for e in reversed(new_entries):  # 由舊到新
-            msg = f"[PTT/LifeIsMoney] {e['title']}\n{e['link']}"
-            r = send_message(BOT_TOKEN, CHAT_ID, msg, raise_on_error=True)
+            msg = f"[PTT/LifeIsMoney] [{e['title']}]({e['link']})"
+            r = send_message(BOT_TOKEN, CHAT_ID, msg, parse_mode="Markdown", raise_on_error=True)
             print(f"  Telegram 回應：{r.status_code} {r.text}")
             print(f"  已送出：{e['title']}")
     else:
