@@ -9,10 +9,10 @@
 
 export default {
   async scheduled(event, env, ctx) {
-    const workflow =
-      event.cron === "0 0-16 * * *" ? "591-rent.yml" : "ptt-rss.yml";
+    const eventType =
+      event.cron === "0 0-16 * * *" ? "cron-591-rent" : "cron-ptt-rss";
     await fetch(
-      `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/${workflow}/dispatches`,
+      `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`,
       {
         method: "POST",
         headers: {
@@ -21,7 +21,7 @@ export default {
           "Content-Type": "application/json",
           "User-Agent": "Cloudflare-Worker",
         },
-        body: JSON.stringify({ ref: "main" }),
+        body: JSON.stringify({ event_type: eventType }),
       }
     );
   },
