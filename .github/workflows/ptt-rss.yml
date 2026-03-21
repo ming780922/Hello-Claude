@@ -1,7 +1,9 @@
 name: PTT LifeIsMoney RSS Monitor
 
 on:
-  workflow_dispatch:  # 由 Cloudflare Worker Cron 觸發（或手動測試）
+  workflow_dispatch:
+  repository_dispatch:
+    types: [cron-ptt-rss]
   # schedule:
   #   - cron: "*/5 * * * *"  # 停用，改由 Cloudflare Worker Cron 觸發
 
