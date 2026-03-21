@@ -2,6 +2,9 @@ name = "hello-claude-telegram-bot"
 main = "worker.js"
 compatibility_date = "2024-01-01"
 
+[triggers]
+crons = ["*/5 * * * *"]
+
 [vars]
 GITHUB_REPO = "ming780922/Hello-Claude"
 

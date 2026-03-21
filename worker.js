@@ -8,6 +8,22 @@
  */
 
 export default {
+  async scheduled(event, env, ctx) {
+    await fetch(
+      `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/ptt-rss.yml/dispatches`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "User-Agent": "Cloudflare-Worker",
+        },
+        body: JSON.stringify({ ref: "main" }),
+      }
+    );
+  },
+
   async fetch(request, env) {
     // GET 路由：RSS Feed 代理（繞過 PTT IP 封鎖）
     if (request.method === "GET") {
