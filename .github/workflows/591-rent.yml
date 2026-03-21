@@ -1,9 +1,9 @@
 name: 591 Rent Crawler
 
 on:
-  schedule:
-    - cron: '0 0-16 * * *'  # 每小時整點，台灣時間 08:00–00:00（UTC 0–16）
   workflow_dispatch:
+  # schedule 停用，改由 Cloudflare Worker Cron 觸發
+  # - cron: '0 0-16 * * *'  # 每小時整點，台灣時間 08:00–00:00（UTC 0–16）
 
 jobs:
   crawl:
