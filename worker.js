@@ -9,8 +9,10 @@
 
 export default {
   async scheduled(event, env, ctx) {
+    const workflow =
+      event.cron === "0 0-16 * * *" ? "591-rent.yml" : "ptt-rss.yml";
     await fetch(
-      `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/ptt-rss.yml/dispatches`,
+      `https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/${workflow}/dispatches`,
       {
         method: "POST",
         headers: {
