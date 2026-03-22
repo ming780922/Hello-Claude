@@ -9,8 +9,14 @@
 
 export default {
   async scheduled(event, env, ctx) {
-    const eventType =
-      event.cron === "0 0-16 * * *" ? "cron-591-rent" : "cron-ptt-rss";
+    let eventType;
+    if (event.cron === "0 0-16 * * *") {
+      eventType = "cron-591-rent";
+    } else if (event.cron === "0 * * * *") {
+      eventType = "cron-yt-monitor";
+    } else {
+      eventType = "cron-ptt-rss";
+    }
     await fetch(
       `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`,
       {
