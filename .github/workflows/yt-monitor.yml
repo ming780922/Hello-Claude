@@ -2,8 +2,10 @@ name: YouTube Channel Keyword Monitor
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 * * * *"  # 每小時整點
+  repository_dispatch:
+    types: [cron-yt-monitor]
+  # schedule:
+  #   - cron: "0 * * * *"  # 停用，改由 Cloudflare Worker Cron 觸發
 
 jobs:
   check-yt:
