@@ -1,0 +1,44 @@
+name: YouTube Channel Keyword Monitor
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 * * * *"  # 每小時整點
+
+jobs:
+  check-yt:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore state cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/yt_state.json
+          key: yt-monitor-state-${{ github.run_id }}
+          restore-keys: |
+            yt-monitor-state-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Check YouTube RSS and send to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_DEFAULT_CHAT_ID }}
+          YT_CHANNEL_ID: ${{ secrets.YT_CHANNEL_ID }}
+          YT_KEYWORD: ${{ secrets.YT_KEYWORD }}
+        run: python yt_channel_monitor.py
+
+      - name: Save state cache
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/yt_state.json
+          key: yt-monitor-state-${{ github.run_id }}
