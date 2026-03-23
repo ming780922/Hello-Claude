@@ -89,6 +89,7 @@ async def main():
 
     collected = []  # timestamp > last_timestamp 的新文章
     latest_timestamp = last_timestamp or 0
+    latest_title = None
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -115,6 +116,7 @@ async def main():
                 ts = extract_timestamp(article["id"])
                 if ts > latest_timestamp:
                     latest_timestamp = ts
+                    latest_title = article["title"]
                 if not is_first_run and last_timestamp and ts > last_timestamp:
                     collected.append({**article, "timestamp": ts})
 
@@ -129,6 +131,9 @@ async def main():
             current_url = prev_url
 
         await browser.close()
+
+    if latest_title:
+        print(f"目前最新文章：{latest_title}")
 
     if is_first_run:
         print(f"首次執行，記錄最新文章 timestamp：{latest_timestamp}，不推播。")
