@@ -4,21 +4,23 @@
 使用 Playwright 抓取多組搜尋結果頁的租屋物件，合併去重後輸出
 """
 import asyncio
+import csv
+import io
 import json
+import os
+import requests
 from playwright.async_api import async_playwright
 
-# 目標網址清單
-URLS = [
-    "https://rent.591.com.tw/list?region=1&section=1&kind=1&layout=2,1&other=pet&notice=not_cover&sort=posttime_desc",
-    "https://rent.591.com.tw/list?region=1&section=2&kind=1&layout=2,1&other=pet&notice=not_cover&sort=posttime_desc",
-    "https://rent.591.com.tw/list?region=1&section=3&kind=1&layout=2,1&other=pet&notice=not_cover&sort=posttime_desc",
-    "https://rent.591.com.tw/list?region=1&section=4&kind=1&layout=2,1&other=pet&notice=not_cover&sort=posttime_desc",
-    "https://rent.591.com.tw/list?region=1&section=5&kind=1&layout=2,1&other=pet&notice=not_cover&sort=posttime_desc",
-    "https://rent.591.com.tw/list?region=1&section=6&kind=1&layout=2,1&other=pet&notice=not_cover&sort=posttime_desc",
-    "https://rent.591.com.tw/list?region=1&section=7&kind=1&layout=2,1&other=pet&notice=not_cover&sort=posttime_desc",
-    "https://rent.591.com.tw/list?region=1&section=12&kind=1&layout=2,1&other=pet&notice=not_cover&sort=posttime_desc",
-    "https://rent.591.com.tw/list?region=3&section=34&kind=1&layout=2,1&other=pet&notice=not_cover&sort=posttime_desc",
-]
+
+def load_urls_from_sheet():
+    sheet_url = os.environ["SHEET_591_URL"]
+    resp = requests.get(sheet_url, timeout=10)
+    resp.raise_for_status()
+    reader = csv.DictReader(io.StringIO(resp.text))
+    return [row["url"].strip() for row in reader if row.get("url", "").strip()]
+
+
+URLS = load_urls_from_sheet()
 
 EXTRACT_JS = """
     () => {
