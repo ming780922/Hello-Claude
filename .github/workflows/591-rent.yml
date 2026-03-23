@@ -35,6 +35,8 @@ jobs:
           playwright install chromium --with-deps
 
       - name: Run crawler
+        env:
+          SHEET_591_URL: ${{ secrets.SHEET_591_URL }}
         run: python crawler_591.py
 
       - name: Run Telegram notifier
