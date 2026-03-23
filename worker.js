@@ -26,7 +26,7 @@ export default {
     } else if (event.cron === "0 * * * *") {
       await dispatch("cron-yt-monitor");
     } else {
-      await Promise.all([dispatch("cron-ptt-rss"), dispatch("cron-ptt-crawler")]);
+      await dispatch("cron-ptt-crawler");
     }
   },
 
