@@ -25,6 +25,12 @@ def extract_article_id(href: str) -> str | None:
     return m.group(1) if m else None
 
 
+def extract_timestamp(article_id: str) -> int:
+    """從文章 ID 提取 Unix timestamp，例如 M.1774255579.A.130 → 1774255579"""
+    m = re.match(r"M\.(\d+)\.", article_id)
+    return int(m.group(1)) if m else 0
+
+
 def parse_articles(html_content: str) -> list[dict]:
     """從頁面 HTML 解析文章列表，回傳 list of {id, title, link}"""
     # 找所有 .r-ent 區塊中有連結的文章（跳過被刪除的）
@@ -74,16 +80,15 @@ async def main():
     try:
         with open(STATE_FILE) as f:
             state = json.load(f)
-        last_id = state.get("last_id")
+        last_timestamp = state.get("last_timestamp")
     except FileNotFoundError:
-        last_id = None
+        last_timestamp = None
 
-    is_first_run = last_id is None
-    print(f"上次最後文章 ID：{last_id or '（首次執行）'}")
+    is_first_run = last_timestamp is None
+    print(f"上次最後文章 timestamp：{last_timestamp or '（首次執行）'}")
 
-    collected = []  # 比 last_id 新的文章，由新到舊
-    found_last = False
-    latest_id = None  # 本次爬到的最新 ID
+    collected = []  # timestamp > last_timestamp 的新文章
+    latest_timestamp = last_timestamp or 0
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -106,20 +111,17 @@ async def main():
                 print("  本頁無文章，停止翻頁")
                 break
 
-            # 記錄本次最新 ID（第一頁第一篇）
-            if page_num == 0 and articles:
-                latest_id = articles[0]["id"]  # 頁面由新到舊排列（最新在頂端）
+            for article in articles:
+                ts = extract_timestamp(article["id"])
+                if ts > latest_timestamp:
+                    latest_timestamp = ts
+                if not is_first_run and last_timestamp and ts > last_timestamp:
+                    collected.append({**article, "timestamp": ts})
 
-            for article in articles:  # 由新到舊檢查（articles[0] 已是最新）
-                if last_id and article["id"] <= last_id:
-                    found_last = True
-                    break
-                collected.append(article)
-
-            if found_last or is_first_run:
+            if is_first_run:
+                # 首次執行只需記錄最新 timestamp，不推播
                 break
 
-            # 找上頁連結繼續爬
             prev_url = find_prev_page_url(html)
             if not prev_url:
                 print("  找不到上頁連結，停止翻頁")
@@ -128,17 +130,11 @@ async def main():
 
         await browser.close()
 
-    # 確保 latest_id 正確（取 collected 中最新的）
-    if collected and not latest_id:
-        latest_id = max(a["id"] for a in collected)
-    elif collected:
-        latest_id = max(max(a["id"] for a in collected), latest_id or "")
-
     if is_first_run:
-        print(f"首次執行，記錄最新文章 ID：{latest_id}，不推播。")
+        print(f"首次執行，記錄最新文章 timestamp：{latest_timestamp}，不推播。")
     elif collected:
-        # collected 是由新到舊，反轉為由舊到新推播
-        new_articles = list(reversed(collected))
+        # 依 timestamp 由舊到新排序後推播
+        new_articles = sorted(collected, key=lambda a: a["timestamp"])
         print(f"發現 {len(new_articles)} 篇新文章，推播中...")
         for a in new_articles:
             msg = f'{a["title"]}\n{a["link"]}'
@@ -148,10 +144,10 @@ async def main():
         print("無新文章。")
 
     # 更新狀態
-    if latest_id:
+    if latest_timestamp:
         with open(STATE_FILE, "w") as f:
-            json.dump({"last_id": latest_id}, f)
-        print(f"狀態已更新，last_id = {latest_id}")
+            json.dump({"last_timestamp": latest_timestamp}, f)
+        print(f"狀態已更新，last_timestamp = {latest_timestamp}")
 
 
 if __name__ == "__main__":
