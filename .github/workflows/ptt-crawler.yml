@@ -1,0 +1,45 @@
+name: PTT LifeIsMoney Crawler
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [cron-ptt-crawler]
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore crawler state cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/ptt_crawler_state.json
+          key: ptt-crawler-state-${{ github.run_id }}
+          restore-keys: |
+            ptt-crawler-state-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install playwright requests
+          playwright install chromium
+
+      - name: Run PTT crawler
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_DEFAULT_CHAT_ID }}
+        run: python ptt_crawler.py
+
+      - name: Save crawler state cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/ptt_crawler_state.json
+          key: ptt-crawler-state-${{ github.run_id }}
