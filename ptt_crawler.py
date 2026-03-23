@@ -141,8 +141,8 @@ async def main():
         new_articles = list(reversed(collected))
         print(f"發現 {len(new_articles)} 篇新文章，推播中...")
         for a in new_articles:
-            msg = f'<a href="{a["link"]}">{a["title"]}</a>'
-            r = send_message(BOT_TOKEN, CHAT_ID, msg, parse_mode="HTML", raise_on_error=True)
+            msg = f'{a["title"]}\n{a["link"]}'
+            r = send_message(BOT_TOKEN, CHAT_ID, msg, raise_on_error=True)
             print(f"  已送出：{a['title']}（{r.status_code}）")
     else:
         print("無新文章。")
