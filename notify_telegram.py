@@ -51,6 +51,7 @@ def main() -> None:
         data = json.load(f)
 
     recent = [item for item in data if is_within_hours(item.get("update_time", ""), args.hours)]
+    recent.sort(key=lambda x: int(re.sub(r'[^\d]', '', x.get('price', '0')) or '0'), reverse=True)
     print(f"Filtered {len(recent)} / {len(data)} listings within {args.hours} hour(s)")
 
     header = (
