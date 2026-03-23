@@ -9,17 +9,8 @@
 
 export default {
   async scheduled(event, env, ctx) {
-    let eventType;
-    if (event.cron === "0 0-16 * * *") {
-      eventType = "cron-591-rent";
-    } else if (event.cron === "0 * * * *") {
-      eventType = "cron-yt-monitor";
-    } else {
-      eventType = "cron-ptt-rss";
-    }
-    await fetch(
-      `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`,
-      {
+    const dispatch = async (eventType) =>
+      fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${env.GITHUB_TOKEN}`,
@@ -28,8 +19,15 @@ export default {
           "User-Agent": "Cloudflare-Worker",
         },
         body: JSON.stringify({ event_type: eventType }),
-      }
-    );
+      });
+
+    if (event.cron === "0 0-16 * * *") {
+      await dispatch("cron-591-rent");
+    } else if (event.cron === "0 * * * *") {
+      await dispatch("cron-yt-monitor");
+    } else {
+      await Promise.all([dispatch("cron-ptt-rss"), dispatch("cron-ptt-crawler")]);
+    }
   },
 
   async fetch(request, env) {
