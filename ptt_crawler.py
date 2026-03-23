@@ -108,9 +108,9 @@ async def main():
 
             # 記錄本次最新 ID（第一頁第一篇）
             if page_num == 0 and articles:
-                latest_id = articles[-1]["id"]  # 頁面由舊到新排列
+                latest_id = articles[0]["id"]  # 頁面由新到舊排列（最新在頂端）
 
-            for article in reversed(articles):  # 由新到舊檢查
+            for article in articles:  # 由新到舊檢查（articles[0] 已是最新）
                 if last_id and article["id"] <= last_id:
                     found_last = True
                     break
