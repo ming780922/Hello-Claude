@@ -23,6 +23,8 @@ export default {
 
     if (event.cron === "0 0-16 * * *") {
       await dispatch("cron-591-rent");
+    } else if (event.cron === "0 1 * * *") {
+      await dispatch("cron-fb-group");
     } else if (event.cron === "0 * * * *") {
       await dispatch("cron-yt-monitor");
     } else {
@@ -136,6 +138,32 @@ export default {
           },
           body: JSON.stringify({
             event_type: "telegram-591",
+            client_payload: {
+              chat_id: chatId,
+            },
+          }),
+        }
+      );
+
+      if (!githubResponse.ok) {
+        const err = await githubResponse.text();
+        console.error("GitHub dispatch failed:", err);
+        return new Response("Internal Server Error", { status: 500 });
+      }
+    } else if (text.startsWith("/fb")) {
+      // Trigger Facebook group crawler
+      const githubResponse = await fetch(
+        `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+            Accept: "application/vnd.github+json",
+            "Content-Type": "application/json",
+            "User-Agent": "Cloudflare-Worker-Telegram-Bot",
+          },
+          body: JSON.stringify({
+            event_type: "telegram-fb",
             client_payload: {
               chat_id: chatId,
             },

@@ -1,0 +1,48 @@
+name: Facebook Group Crawler
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [cron-fb-group, telegram-fb]
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Notify starting
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ github.event.client_payload.chat_id || secrets.TELEGRAM_DEFAULT_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\": \"${TELEGRAM_CHAT_ID}\", \"text\": \"Facebook 社團爬蟲即將執行，請稍候...\", \"parse_mode\": \"HTML\"}"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium --with-deps
+
+      - name: Run crawler
+        run: python crawler_fb_group.py
+
+      - name: Run Telegram notifier
+        run: python notify_fb_group.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ github.event.client_payload.chat_id || secrets.TELEGRAM_DEFAULT_CHAT_ID }}
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: fb-group-data-${{ github.run_number }}
+          path: fb_group_data.json
