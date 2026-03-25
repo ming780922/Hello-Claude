@@ -25,8 +25,6 @@ export default {
       await dispatch("cron-591-rent");
     } else if (event.cron === "0 1 * * *") {
       await dispatch("cron-fb-group");
-    } else if (event.cron === "0 * * * *") {
-      await dispatch("cron-yt-monitor");
     } else {
       await dispatch("cron-ptt-crawler");
     }
