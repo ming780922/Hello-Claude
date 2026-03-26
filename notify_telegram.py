@@ -34,8 +34,10 @@ def format_item(item: dict) -> str:
     management_fee = item.get("management_fee", "")
 
     price_parts = [price]
-    if management_fee:
-        price_parts.append(f"管理費 {management_fee}元")
+    if management_fee == '無':
+        price_parts.append("管理費：無")
+    elif management_fee:
+        price_parts.append(f"管理費 {management_fee}")
         rent_num = int(re.sub(r'[^\d]', '', price) or '0')
         fee_num = int(re.sub(r'[^\d]', '', management_fee) or '0')
         if rent_num and fee_num:
