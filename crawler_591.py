@@ -8,6 +8,7 @@ import csv
 import io
 import json
 import os
+from pathlib import Path
 import requests
 from playwright.async_api import async_playwright
 
@@ -73,26 +74,43 @@ MGMT_FEE_JS = """
 """
 
 
-async def fetch_management_fee(browser, url: str) -> str:
-    if not url:
-        return ''
+async def fetch_detail_data(browser, url: str, item_id: str, screenshots_dir: Path) -> tuple:
+    """Fetch management fee and take a screenshot from the detail page.
+    Returns (management_fee: str, screenshot_path: str | None).
+    """
+    if not url or not item_id:
+        return '', None
     page = await browser.new_page()
+    screenshot_path = None
     try:
         await page.goto(url, wait_until='domcontentloaded', timeout=15000)
         await page.wait_for_timeout(1500)
-        return await page.evaluate(MGMT_FEE_JS)
+        mgmt_fee = await page.evaluate(MGMT_FEE_JS)
+        try:
+            path = screenshots_dir / f"{item_id}.jpg"
+            await page.screenshot(path=str(path), type="jpeg", full_page=False)
+            screenshot_path = str(path)
+        except Exception:
+            pass
+        return mgmt_fee, screenshot_path
     except Exception:
-        return ''
+        return '', None
     finally:
         await page.close()
 
 
 async def enrich_with_management_fees(browser, items: list) -> None:
+    screenshots_dir = Path("screenshots")
+    screenshots_dir.mkdir(exist_ok=True)
     semaphore = asyncio.Semaphore(3)
 
     async def fetch_one(item):
         async with semaphore:
-            item['management_fee'] = await fetch_management_fee(browser, item.get('link', ''))
+            mgmt_fee, screenshot_path = await fetch_detail_data(
+                browser, item.get('link', ''), item.get('id', ''), screenshots_dir
+            )
+            item['management_fee'] = mgmt_fee
+            item['screenshot_path'] = screenshot_path
 
     await asyncio.gather(*[fetch_one(item) for item in items])
 
