@@ -83,8 +83,12 @@ async def fetch_detail_data(browser, url: str, item_id: str, screenshots_dir: Pa
     page = await browser.new_page()
     screenshot_path = None
     try:
-        await page.goto(url, wait_until='domcontentloaded', timeout=15000)
-        await page.wait_for_timeout(1500)
+        await page.goto(url, wait_until='load', timeout=20000)
+        await page.evaluate("window.scrollTo(0, 600)")
+        try:
+            await page.wait_for_load_state('networkidle', timeout=8000)
+        except Exception:
+            pass
         mgmt_fee = await page.evaluate(MGMT_FEE_JS)
         try:
             path = screenshots_dir / f"{item_id}.jpg"
