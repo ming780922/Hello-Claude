@@ -22,11 +22,6 @@ def is_within_hours(update_time: str, hours: int) -> bool:
     return False
 
 
-def escape_mdv2(text: str) -> str:
-    """Escape special characters for Telegram MarkdownV2."""
-    return re.sub(r'([\\_*\[\]()~`>#+=|{}.!\-])', r'\\\1', text)
-
-
 def _build_price_parts(item: dict) -> list:
     price = item.get("price", "")
     management_fee = item.get("management_fee", "")
@@ -54,31 +49,6 @@ def format_item(item: dict) -> str:
     price_display = " ＋ ".join(_build_price_parts(item))
     meta = " · ".join(filter(None, [region, layout, area, floor, price_display, update_time]))
     return f"🏠 <b>{title}</b>\n{meta}\n{url}"
-
-
-CAPTION_MAX = 1024
-
-
-def format_item_mdv2(item: dict) -> str:
-    title = item.get("title", "（無標題）")
-    region = item.get("region", "")
-    layout = item.get("layout", "")
-    area = item.get("area", "")
-    floor = item.get("floor", "")
-    update_time = item.get("update_time", "")
-    url = item.get("link", "")
-
-    price_display = " ＋ ".join(_build_price_parts(item))
-    meta = " · ".join(filter(None, [region, layout, area, floor, price_display, update_time]))
-
-    caption = (
-        f"🏠 *{escape_mdv2(title)}*\n"
-        f"{escape_mdv2(meta)}\n"
-        f"{url}"
-    )
-    if len(caption) > CAPTION_MAX:
-        caption = caption[:CAPTION_MAX - 1] + "…"
-    return caption
 
 
 def main() -> None:
@@ -109,7 +79,7 @@ def main() -> None:
     for item in recent:
         screenshot_path = item.get("screenshot_path")
         if screenshot_path and os.path.exists(screenshot_path):
-            caption = format_item_mdv2(item)
+            caption = format_item(item)
             try:
                 with open(screenshot_path, "rb") as f:
                     img_data = f.read()
@@ -117,7 +87,7 @@ def main() -> None:
                     token, chat_id, img_data,
                     filename=os.path.basename(screenshot_path),
                     caption=caption,
-                    parse_mode="MarkdownV2",
+                    parse_mode="HTML",
                 )
             except Exception as e:
                 print(f"Warning: photo send failed for {item.get('id')}: {e}", file=sys.stderr)
