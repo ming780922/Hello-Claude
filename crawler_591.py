@@ -47,8 +47,6 @@ EXTRACT_JS = """
             const lineEls = Array.from(item.querySelectorAll('span.line'));
             const updateEl = lineEls.find(el => el.textContent.includes('更新'));
             const updateTime = updateEl ? updateEl.textContent.trim() : '';
-            const mgmtFeeMatch = allText.match(/管理費[：:]\s*([\d,]+)\s*元/);
-            const managementFee = mgmtFeeMatch ? mgmtFeeMatch[1] : '';
             return {
                 id: dataId,
                 title: title,
@@ -58,13 +56,45 @@ EXTRACT_JS = """
                 floor: floor,
                 region: region,
                 update_time: updateTime,
-                management_fee: managementFee,
                 image: image,
                 link: link
             };
         });
     }
 """
+
+
+MGMT_FEE_JS = """
+    () => {
+        const bodyText = document.body.innerText;
+        const match = bodyText.match(/管理費(無|[\\d,]+元\\/月)/);
+        return match ? match[1] : '';
+    }
+"""
+
+
+async def fetch_management_fee(browser, url: str) -> str:
+    if not url:
+        return ''
+    page = await browser.new_page()
+    try:
+        await page.goto(url, wait_until='domcontentloaded', timeout=15000)
+        await page.wait_for_timeout(1500)
+        return await page.evaluate(MGMT_FEE_JS)
+    except Exception:
+        return ''
+    finally:
+        await page.close()
+
+
+async def enrich_with_management_fees(browser, items: list) -> None:
+    semaphore = asyncio.Semaphore(3)
+
+    async def fetch_one(item):
+        async with semaphore:
+            item['management_fee'] = await fetch_management_fee(browser, item.get('link', ''))
+
+    await asyncio.gather(*[fetch_one(item) for item in items])
 
 
 async def crawl_591(browser, url: str) -> list:
@@ -99,6 +129,8 @@ async def main():
                 if item["id"] not in seen_ids:
                     seen_ids.add(item["id"])
                     all_items.append(item)
+        print(f"\n正在抓取 {len(all_items)} 筆物件的管理費資訊...")
+        await enrich_with_management_fees(browser, all_items)
         await browser.close()
 
     print(f"\n合計抓取 {len(all_items)} 筆（已去重）\n")
