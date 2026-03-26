@@ -84,6 +84,7 @@ async def fetch_detail_data(browser, url: str, item_id: str, screenshots_dir: Pa
     screenshot_path = None
     try:
         await page.goto(url, wait_until='load', timeout=20000)
+        await page.evaluate("window.scrollTo(0, 600)")
         try:
             await page.wait_for_load_state('networkidle', timeout=8000)
         except Exception:
@@ -92,7 +93,6 @@ async def fetch_detail_data(browser, url: str, item_id: str, screenshots_dir: Pa
         try:
             path = screenshots_dir / f"{item_id}.jpg"
             await page.evaluate("window.scrollTo(0, 0)")
-            await page.evaluate("window.scrollTo(0, 600)")
             await page.screenshot(path=str(path), type="jpeg", full_page=False)
             screenshot_path = str(path)
         except Exception:
