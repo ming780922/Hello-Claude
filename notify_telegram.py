@@ -31,7 +31,18 @@ def format_item(item: dict) -> str:
     price = item.get("price", "")
     update_time = item.get("update_time", "")
     url = item.get("link", "")
-    meta = " · ".join(filter(None, [region, layout, area, floor, price, update_time]))
+    management_fee = item.get("management_fee", "")
+
+    price_parts = [price]
+    if management_fee:
+        price_parts.append(f"管理費 {management_fee}元")
+        rent_num = int(re.sub(r'[^\d]', '', price) or '0')
+        fee_num = int(re.sub(r'[^\d]', '', management_fee) or '0')
+        if rent_num and fee_num:
+            price_parts.append(f"合計 {rent_num + fee_num:,}元")
+
+    price_display = " ＋ ".join(price_parts)
+    meta = " · ".join(filter(None, [region, layout, area, floor, price_display, update_time]))
     return f"🏠 <b>{title}</b>\n{meta}\n{url}"
 
 
