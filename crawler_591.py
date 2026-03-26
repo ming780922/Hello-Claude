@@ -47,6 +47,8 @@ EXTRACT_JS = """
             const lineEls = Array.from(item.querySelectorAll('span.line'));
             const updateEl = lineEls.find(el => el.textContent.includes('更新'));
             const updateTime = updateEl ? updateEl.textContent.trim() : '';
+            const mgmtFeeMatch = allText.match(/管理費[：:]\s*([\d,]+)\s*元/);
+            const managementFee = mgmtFeeMatch ? mgmtFeeMatch[1] : '';
             return {
                 id: dataId,
                 title: title,
@@ -56,6 +58,7 @@ EXTRACT_JS = """
                 floor: floor,
                 region: region,
                 update_time: updateTime,
+                management_fee: managementFee,
                 image: image,
                 link: link
             };
