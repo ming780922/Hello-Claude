@@ -4,7 +4,7 @@ import os
 import re
 import sys
 
-from telegram_utils import send_telegram, send_batched
+from telegram_utils import send_message, send_photo_bytes
 
 
 def is_within_hours(update_time: str, hours: int) -> bool:
@@ -22,30 +22,63 @@ def is_within_hours(update_time: str, hours: int) -> bool:
     return False
 
 
+def escape_mdv2(text: str) -> str:
+    """Escape special characters for Telegram MarkdownV2."""
+    return re.sub(r'([\\_*\[\]()~`>#+=|{}.!\-])', r'\\\1', text)
+
+
+def _build_price_parts(item: dict) -> list:
+    price = item.get("price", "")
+    management_fee = item.get("management_fee", "")
+    parts = [price]
+    if management_fee == '無':
+        parts.append("管理費：無")
+    elif management_fee:
+        parts.append(f"管理費 {management_fee}")
+        rent_num = int(re.sub(r'[^\d]', '', price) or '0')
+        fee_num = int(re.sub(r'[^\d]', '', management_fee) or '0')
+        if rent_num and fee_num:
+            parts.append(f"合計 {rent_num + fee_num:,}元")
+    return parts
+
+
 def format_item(item: dict) -> str:
     title = item.get("title", "（無標題）")
     region = item.get("region", "")
     layout = item.get("layout", "")
     area = item.get("area", "")
     floor = item.get("floor", "")
-    price = item.get("price", "")
     update_time = item.get("update_time", "")
     url = item.get("link", "")
-    management_fee = item.get("management_fee", "")
 
-    price_parts = [price]
-    if management_fee == '無':
-        price_parts.append("管理費：無")
-    elif management_fee:
-        price_parts.append(f"管理費 {management_fee}")
-        rent_num = int(re.sub(r'[^\d]', '', price) or '0')
-        fee_num = int(re.sub(r'[^\d]', '', management_fee) or '0')
-        if rent_num and fee_num:
-            price_parts.append(f"合計 {rent_num + fee_num:,}元")
-
-    price_display = " ＋ ".join(price_parts)
+    price_display = " ＋ ".join(_build_price_parts(item))
     meta = " · ".join(filter(None, [region, layout, area, floor, price_display, update_time]))
     return f"🏠 <b>{title}</b>\n{meta}\n{url}"
+
+
+CAPTION_MAX = 1024
+
+
+def format_item_mdv2(item: dict) -> str:
+    title = item.get("title", "（無標題）")
+    region = item.get("region", "")
+    layout = item.get("layout", "")
+    area = item.get("area", "")
+    floor = item.get("floor", "")
+    update_time = item.get("update_time", "")
+    url = item.get("link", "")
+
+    price_display = " ＋ ".join(_build_price_parts(item))
+    meta = " · ".join(filter(None, [region, layout, area, floor, price_display, update_time]))
+
+    caption = (
+        f"🏠 *{escape_mdv2(title)}*\n"
+        f"{escape_mdv2(meta)}\n"
+        f"[詳情頁]({escape_mdv2(url)})"
+    )
+    if len(caption) > CAPTION_MAX:
+        caption = caption[:CAPTION_MAX - 1] + "…"
+    return caption
 
 
 def main() -> None:
@@ -71,12 +104,28 @@ def main() -> None:
         f"📊 <b>591 爬蟲摘要</b>\n"
         f"共抓取 {len(data)} 筆 ｜ {args.hours} 小時內更新 {len(recent)} 筆"
     )
-    if not recent:
-        send_telegram(token, chat_id, header)
-        return
+    send_message(token, chat_id, header, parse_mode="HTML")
 
-    items = [format_item(item) for item in recent]
-    send_batched(token, chat_id, header, items)
+    for item in recent:
+        screenshot_path = item.get("screenshot_path")
+        if screenshot_path and os.path.exists(screenshot_path):
+            caption = format_item_mdv2(item)
+            try:
+                with open(screenshot_path, "rb") as f:
+                    img_data = f.read()
+                send_photo_bytes(
+                    token, chat_id, img_data,
+                    filename=os.path.basename(screenshot_path),
+                    caption=caption,
+                    parse_mode="MarkdownV2",
+                )
+            except Exception as e:
+                print(f"Warning: photo send failed for {item.get('id')}: {e}", file=sys.stderr)
+                send_message(token, chat_id, format_item(item),
+                             parse_mode="HTML", disable_web_page_preview=True)
+        else:
+            send_message(token, chat_id, format_item(item),
+                         parse_mode="HTML", disable_web_page_preview=True)
 
 
 if __name__ == "__main__":
