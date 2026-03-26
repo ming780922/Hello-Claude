@@ -74,7 +74,7 @@ def format_item_mdv2(item: dict) -> str:
     caption = (
         f"🏠 *{escape_mdv2(title)}*\n"
         f"{escape_mdv2(meta)}\n"
-        f"[詳情頁]({escape_mdv2(url)})"
+        f"{url}"
     )
     if len(caption) > CAPTION_MAX:
         caption = caption[:CAPTION_MAX - 1] + "…"
