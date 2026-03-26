@@ -24,10 +24,12 @@ def send_message(token, chat_id, text, *, parse_mode=None,
 
 
 def send_photo_bytes(token, chat_id, data, filename="photo.jpg", *,
-                     caption=None, timeout=30, raise_on_error=False):
+                     caption=None, parse_mode=None, timeout=30, raise_on_error=False):
     fields = {"chat_id": chat_id}
     if caption:
         fields["caption"] = caption
+    if parse_mode:
+        fields["parse_mode"] = parse_mode
     r = requests.post(
         f"https://api.telegram.org/bot{token}/sendPhoto",
         data=fields,
