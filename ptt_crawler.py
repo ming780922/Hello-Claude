@@ -14,7 +14,7 @@ from playwright.async_api import async_playwright
 from telegram_utils import send_message
 
 PTT_BASE = "https://www.ptt.cc"
-PTT_INDEX = f"{PTT_BASE}/bbs/LifeIsMoney/index.html"
+BOARDS = ["LifeIsMoney", "creditcard", "Rent_apart"]
 STATE_FILE = "/tmp/ptt_crawler_state.json"
 MAX_PAGES = 5  # 最多往前翻幾頁
 
@@ -54,13 +54,13 @@ def parse_articles(html_content: str) -> list[dict]:
     return articles
 
 
-def find_prev_page_url(html_content: str) -> str | None:
+def find_prev_page_url(html_content: str, board: str) -> str | None:
     """找「上頁」按鈕的連結"""
-    m = re.search(r'<a[^>]+href="(/bbs/LifeIsMoney/index\d+\.html)"[^>]*>\s*‹ 上頁', html_content)
+    m = re.search(rf'<a[^>]+href="(/bbs/{board}/index\d+\.html)"[^>]*>\s*‹ 上頁', html_content)
     if m:
         return PTT_BASE + m.group(1)
     # 備用：找 class="btn wide" 的上頁
-    m = re.search(r'href="(/bbs/LifeIsMoney/index\d+\.html)"[^>]*>[^<]*上頁', html_content)
+    m = re.search(rf'href="(/bbs/{board}/index\d+\.html)"[^>]*>[^<]*上頁', html_content)
     return (PTT_BASE + m.group(1)) if m else None
 
 
@@ -80,16 +80,17 @@ async def main():
     try:
         with open(STATE_FILE) as f:
             state = json.load(f)
-        last_timestamp = state.get("last_timestamp")
+        # 向下兼容，舊版格式為 {"last_timestamp": 1234}
+        if "last_timestamps" in state:
+            last_timestamps = state["last_timestamps"]
+        elif "last_timestamp" in state:
+            last_timestamps = {"LifeIsMoney": state["last_timestamp"]}
+        else:
+            last_timestamps = {}
     except FileNotFoundError:
-        last_timestamp = None
+        last_timestamps = {}
 
-    is_first_run = last_timestamp is None
-    print(f"上次最後文章 timestamp：{last_timestamp or '（首次執行）'}")
-
-    collected = []  # timestamp > last_timestamp 的新文章
-    latest_timestamp = last_timestamp or 0
-    latest_title = None
+    all_collected = []  # 收集所有看板的新文章
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -102,57 +103,71 @@ async def main():
         ])
         page = await context.new_page()
 
-        current_url = PTT_INDEX
-        for page_num in range(MAX_PAGES):
-            html = await fetch_page(page, current_url)
-            articles = parse_articles(html)
-            print(f"  本頁解析到 {len(articles)} 篇文章")
+        for board in BOARDS:
+            print(f"--- 開始處理看板：{board} ---")
+            board_last_ts = last_timestamps.get(board)
+            is_first_run = board_last_ts is None
+            print(f"[{board}] 上次最後文章 timestamp：{board_last_ts or '（首次紀錄）'}")
 
-            if not articles:
-                print("  本頁無文章，停止翻頁")
-                break
+            board_collected = []
+            board_latest_ts = board_last_ts or 0
+            board_latest_title = None
 
-            for article in articles:
-                ts = extract_timestamp(article["id"])
-                if ts > latest_timestamp:
-                    latest_timestamp = ts
-                    latest_title = article["title"]
-                if not is_first_run and last_timestamp and ts > last_timestamp:
-                    collected.append({**article, "timestamp": ts})
+            current_url = f"{PTT_BASE}/bbs/{board}/index.html"
+            
+            for page_num in range(MAX_PAGES):
+                html = await fetch_page(page, current_url)
+                articles = parse_articles(html)
+                print(f"  [{board}] 本頁解析到 {len(articles)} 篇文章")
 
-            if is_first_run:
-                # 首次執行只需記錄最新 timestamp，不推播
-                break
+                if not articles:
+                    print(f"  [{board}] 本頁無文章，停止翻頁")
+                    break
 
-            prev_url = find_prev_page_url(html)
-            if not prev_url:
-                print("  找不到上頁連結，停止翻頁")
-                break
-            current_url = prev_url
+                for article in articles:
+                    ts = extract_timestamp(article["id"])
+                    
+                    if ts > board_latest_ts:
+                        board_latest_ts = ts
+                        board_latest_title = article["title"]
+                        
+                    if not is_first_run and board_last_ts and ts > board_last_ts:
+                        board_collected.append({**article, "timestamp": ts, "board": board})
+
+                if is_first_run:
+                    # 首次執行只需記錄最新 timestamp，不推播
+                    break
+
+                prev_url = find_prev_page_url(html, board)
+                if not prev_url:
+                    print(f"  [{board}] 找不到上頁連結，停止翻頁")
+                    break
+                current_url = prev_url
+            
+            if board_latest_title:
+                print(f"[{board}] 目前最新文章：{board_latest_title}")
+                # 更新狀態 (只在這裡更新，確保有成功爬完該板)
+                last_timestamps[board] = board_latest_ts
+                
+            all_collected.extend(board_collected)
 
         await browser.close()
 
-    if latest_title:
-        print(f"目前最新文章：{latest_title}")
-
-    if is_first_run:
-        print(f"首次執行，記錄最新文章 timestamp：{latest_timestamp}，不推播。")
-    elif collected:
-        # 依 timestamp 由舊到新排序後推播
-        new_articles = sorted(collected, key=lambda a: a["timestamp"])
-        print(f"發現 {len(new_articles)} 篇新文章，推播中...")
+    if all_collected:
+        # 依 timestamp 由舊到新排序後推播，確保通知時序正確
+        new_articles = sorted(all_collected, key=lambda a: a["timestamp"])
+        print(f"\n發現共有 {len(new_articles)} 篇新文章，推播中...")
         for a in new_articles:
-            msg = f'{a["title"]}\n{a["link"]}'
+            msg = f"[{a['board']}] {a['title']}\n{a['link']}"
             r = send_message(BOT_TOKEN, CHAT_ID, msg, raise_on_error=True)
-            print(f"  已送出：{a['title']}（{r.status_code}）")
+            print(f"  已送出：[{a['board']}] {a['title']}（{r.status_code}）")
     else:
-        print("無新文章。")
+        print("\n各看板均無新文章。")
 
-    # 更新狀態
-    if latest_timestamp:
-        with open(STATE_FILE, "w") as f:
-            json.dump({"last_timestamp": latest_timestamp}, f)
-        print(f"狀態已更新，last_timestamp = {latest_timestamp}")
+    # 統一儲存所有看板最新狀態
+    with open(STATE_FILE, "w") as f:
+        json.dump({"last_timestamps": last_timestamps}, f)
+    print(f"狀態已更新。")
 
 
 if __name__ == "__main__":
