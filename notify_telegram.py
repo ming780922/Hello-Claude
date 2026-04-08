@@ -54,7 +54,7 @@ def format_item(item: dict) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send 591 rent listings to Telegram")
     parser.add_argument("--file", default="591_rent_data.json", help="Path to JSON data file")
-    parser.add_argument("--hours", type=int, default=1, help="Include listings updated within this many hours")
+    parser.add_argument("--hours", type=int, default=0, help="Only include listings updated within this many hours (0 = send all)")
     args = parser.parse_args()
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -66,9 +66,13 @@ def main() -> None:
     with open(args.file, encoding="utf-8") as f:
         data = json.load(f)
 
-    recent = [item for item in data if is_within_hours(item.get("update_time", ""), args.hours)]
+    if args.hours > 0:
+        recent = [item for item in data if is_within_hours(item.get("update_time", ""), args.hours)]
+        print(f"Filtered {len(recent)} / {len(data)} listings within {args.hours} hour(s)")
+    else:
+        recent = list(data)
+        print(f"Sending all {len(recent)} listings")
     recent.sort(key=lambda x: int(re.sub(r'[^\d]', '', x.get('price', '0')) or '0'), reverse=True)
-    print(f"Filtered {len(recent)} / {len(data)} listings within {args.hours} hour(s)")
 
     header = (
         f"📊 <b>591 爬蟲摘要</b>\n"
