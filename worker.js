@@ -5,28 +5,125 @@
  *   TELEGRAM_BOT_TOKEN  - Your Telegram Bot token (from @BotFather)
  *   GITHUB_TOKEN        - GitHub Personal Access Token (needs repo scope)
  *   GITHUB_REPO         - Target repo, e.g. "ming780922/Hello-Claude"
+ *
+ * D1 Binding (set in wrangler.toml):
+ *   DB  - D1 database for saved listings
  */
+
+// ── Telegram helpers ──────────────────────────────────────────────────────────
+
+function tgApi(token, method, payload) {
+  return fetch(`https://api.telegram.org/bot${token}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+function tgSend(token, chatId, text) {
+  return tgApi(token, "sendMessage", { chat_id: chatId, text, parse_mode: "HTML" });
+}
+
+function tgSendWithMarkup(token, chatId, caption, itemId) {
+  return tgApi(token, "sendMessage", {
+    chat_id: chatId,
+    text: caption,
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+    reply_markup: {
+      inline_keyboard: [[{ text: "🗑️ 移除", callback_data: `unsave:${itemId}` }]],
+    },
+  });
+}
+
+// ── GitHub dispatch helper ────────────────────────────────────────────────────
+
+async function dispatch(env, eventType, payload = {}) {
+  const resp = await fetch(
+    `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "User-Agent": "Cloudflare-Worker-Telegram-Bot",
+      },
+      body: JSON.stringify({ event_type: eventType, client_payload: payload }),
+    }
+  );
+  if (!resp.ok) {
+    const err = await resp.text();
+    console.error(`GitHub dispatch failed (${eventType}):`, err);
+  }
+  return resp;
+}
+
+// ── Callback query handler ────────────────────────────────────────────────────
+
+async function handleCallback(cq, env) {
+  const chatId = String(cq.message.chat.id);
+  const messageId = cq.message.message_id;
+  const data = cq.data ?? "";
+  const token = env.TELEGRAM_BOT_TOKEN;
+
+  if (data.startsWith("save:")) {
+    const itemId = data.slice(5);
+    const caption = cq.message.caption || cq.message.text || "";
+
+    const existing = await env.DB.prepare(
+      "SELECT 1 FROM saved_listings WHERE item_id = ? AND chat_id = ?"
+    ).bind(itemId, chatId).first();
+
+    if (!existing) {
+      await env.DB.prepare(
+        "INSERT INTO saved_listings (item_id, chat_id, caption, saved_at) VALUES (?, ?, ?, ?)"
+      ).bind(itemId, chatId, caption, new Date().toISOString()).run();
+    }
+
+    await tgApi(token, "editMessageReplyMarkup", {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: {
+        inline_keyboard: [[{ text: "🗑️ 取消儲存", callback_data: `unsave:${itemId}` }]],
+      },
+    });
+    await tgApi(token, "answerCallbackQuery", {
+      callback_query_id: cq.id,
+      text: existing ? "已儲存過了" : "✅ 已儲存！",
+    });
+
+  } else if (data.startsWith("unsave:")) {
+    const itemId = data.slice(7);
+
+    await env.DB.prepare(
+      "DELETE FROM saved_listings WHERE item_id = ? AND chat_id = ?"
+    ).bind(itemId, chatId).run();
+
+    await tgApi(token, "editMessageReplyMarkup", {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: {
+        inline_keyboard: [[{ text: "⭐ 儲存", callback_data: `save:${itemId}` }]],
+      },
+    });
+    await tgApi(token, "answerCallbackQuery", {
+      callback_query_id: cq.id,
+      text: "🗑️ 已移除",
+    });
+  }
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
 
 export default {
   async scheduled(event, env, ctx) {
-    const dispatch = async (eventType) =>
-      fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json",
-          "User-Agent": "Cloudflare-Worker",
-        },
-        body: JSON.stringify({ event_type: eventType }),
-      });
-
     if (event.cron === "0 0-16 * * *") {
-      await dispatch("cron-591-rent");
+      await dispatch(env, "cron-591-rent");
     } else if (event.cron === "0 1 * * *") {
-      await dispatch("cron-fb-group");
+      await dispatch(env, "cron-fb-group");
     } else {
-      await dispatch("cron-ptt-crawler");
+      await dispatch(env, "cron-ptt-crawler");
     }
   },
 
@@ -58,6 +155,12 @@ export default {
       return new Response("Bad Request", { status: 400 });
     }
 
+    // callback_query：處理 inline button 點擊
+    if (body?.callback_query) {
+      await handleCallback(body.callback_query, env);
+      return new Response("OK");
+    }
+
     const message = body?.message;
     if (!message) {
       return new Response("OK");
@@ -66,113 +169,30 @@ export default {
     const chatId = message.chat?.id;
     const text = message.text ?? "";
 
-    // Route commands
     if (text.startsWith("/echo")) {
-      // Extract the message after /echo (strip "/echo" prefix and trim)
       const echoText = text.replace(/^\/echo\s*/, "").trim() || "(empty)";
+      await dispatch(env, "telegram-echo", { chat_id: chatId, text: echoText });
 
-      const githubResponse = await fetch(
-        `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-            Accept: "application/vnd.github+json",
-            "Content-Type": "application/json",
-            "User-Agent": "Cloudflare-Worker-Telegram-Bot",
-          },
-          body: JSON.stringify({
-            event_type: "telegram-echo",
-            client_payload: {
-              chat_id: chatId,
-              text: echoText,
-            },
-          }),
-        }
-      );
-
-      if (!githubResponse.ok) {
-        const err = await githubResponse.text();
-        console.error("GitHub dispatch failed:", err);
-        return new Response("Internal Server Error", { status: 500 });
-      }
     } else if (text.startsWith("/donate")) {
-      // Trigger blood donation activity image scraper
-      const githubResponse = await fetch(
-        `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-            Accept: "application/vnd.github+json",
-            "Content-Type": "application/json",
-            "User-Agent": "Cloudflare-Worker-Telegram-Bot",
-          },
-          body: JSON.stringify({
-            event_type: "telegram-donate",
-            client_payload: {
-              chat_id: chatId,
-            },
-          }),
-        }
-      );
+      await dispatch(env, "telegram-donate", { chat_id: chatId });
 
-      if (!githubResponse.ok) {
-        const err = await githubResponse.text();
-        console.error("GitHub dispatch failed:", err);
-        return new Response("Internal Server Error", { status: 500 });
-      }
     } else if (text.startsWith("/591")) {
-      // Trigger 591 rent crawler
-      const githubResponse = await fetch(
-        `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-            Accept: "application/vnd.github+json",
-            "Content-Type": "application/json",
-            "User-Agent": "Cloudflare-Worker-Telegram-Bot",
-          },
-          body: JSON.stringify({
-            event_type: "telegram-591",
-            client_payload: {
-              chat_id: chatId,
-            },
-          }),
-        }
-      );
+      await dispatch(env, "telegram-591", { chat_id: chatId });
 
-      if (!githubResponse.ok) {
-        const err = await githubResponse.text();
-        console.error("GitHub dispatch failed:", err);
-        return new Response("Internal Server Error", { status: 500 });
-      }
     } else if (text.startsWith("/fb")) {
-      // Trigger Facebook group crawler
-      const githubResponse = await fetch(
-        `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-            Accept: "application/vnd.github+json",
-            "Content-Type": "application/json",
-            "User-Agent": "Cloudflare-Worker-Telegram-Bot",
-          },
-          body: JSON.stringify({
-            event_type: "telegram-fb",
-            client_payload: {
-              chat_id: chatId,
-            },
-          }),
-        }
-      );
+      await dispatch(env, "telegram-fb", { chat_id: chatId });
 
-      if (!githubResponse.ok) {
-        const err = await githubResponse.text();
-        console.error("GitHub dispatch failed:", err);
-        return new Response("Internal Server Error", { status: 500 });
+    } else if (text.startsWith("/saved")) {
+      const { results } = await env.DB.prepare(
+        "SELECT * FROM saved_listings WHERE chat_id = ? ORDER BY saved_at DESC"
+      ).bind(String(chatId)).all();
+
+      if (!results.length) {
+        await tgSend(env.TELEGRAM_BOT_TOKEN, chatId, "目前沒有儲存的物件。");
+      } else {
+        for (const row of results) {
+          await tgSendWithMarkup(env.TELEGRAM_BOT_TOKEN, chatId, row.caption, row.item_id);
+        }
       }
     }
 

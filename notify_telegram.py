@@ -82,13 +82,15 @@ def main() -> None:
         print(f"Sending all {len(recent)} listings")
     recent.sort(key=lambda x: int(re.sub(r'[^\d]', '', x.get('price', '0')) or '0'), reverse=True)
 
-    header = (
-        f"📊 <b>591 爬蟲摘要</b>\n"
-        f"共抓取 {len(data)} 筆 ｜ {args.hours} 小時內更新 {len(recent)} 筆"
-    )
+    if args.hours > 0:
+        summary = f"共 {len(data)} 筆 ｜ {args.hours} 小時內更新 {len(recent)} 筆"
+    else:
+        summary = f"共 {len(recent)} 筆新物件"
+    header = f"📊 <b>591 爬蟲摘要</b>\n{summary}"
     send_message(token, chat_id, header, parse_mode="HTML")
 
     for item in recent:
+        save_markup = {"inline_keyboard": [[{"text": "⭐ 儲存", "callback_data": f"save:{item['id']}"}]]}
         screenshot_path = item.get("screenshot_path")
         if screenshot_path and os.path.exists(screenshot_path):
             caption = format_item(item)
@@ -100,14 +102,17 @@ def main() -> None:
                     filename=os.path.basename(screenshot_path),
                     caption=caption,
                     parse_mode="HTML",
+                    reply_markup=save_markup,
                 )
             except Exception as e:
                 print(f"Warning: photo send failed for {item.get('id')}: {e}", file=sys.stderr)
                 send_message(token, chat_id, format_item(item),
-                             parse_mode="HTML", disable_web_page_preview=True)
+                             parse_mode="HTML", disable_web_page_preview=True,
+                             reply_markup=save_markup)
         else:
             send_message(token, chat_id, format_item(item),
-                         parse_mode="HTML", disable_web_page_preview=True)
+                         parse_mode="HTML", disable_web_page_preview=True,
+                         reply_markup=save_markup)
 
 
 if __name__ == "__main__":

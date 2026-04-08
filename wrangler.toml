@@ -8,6 +8,11 @@ crons = ["*/5 * * * *", "0 0-16 * * *", "0 1 * * *"]
 [vars]
 GITHUB_REPO = "ming780922/Hello-Claude"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "rent-saved-listings"
+database_id = "30b68c33-6437-4359-beb9-1cc8180b1542"
+
 # 敏感變數請用 wrangler secret put 設定，不要寫在這裡：
 # TELEGRAM_BOT_TOKEN
 # GITHUB_TOKEN

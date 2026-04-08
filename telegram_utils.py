@@ -1,4 +1,5 @@
 import io
+import json
 
 import requests
 
@@ -7,12 +8,14 @@ TELEGRAM_MAX_LENGTH = 4096
 
 def send_message(token, chat_id, text, *, parse_mode=None,
                  disable_web_page_preview=False, timeout=15,
-                 raise_on_error=False):
+                 raise_on_error=False, reply_markup=None):
     payload = {"chat_id": chat_id, "text": text}
     if parse_mode:
         payload["parse_mode"] = parse_mode
     if disable_web_page_preview:
         payload["disable_web_page_preview"] = True
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     r = requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
         json=payload,
@@ -24,12 +27,15 @@ def send_message(token, chat_id, text, *, parse_mode=None,
 
 
 def send_photo_bytes(token, chat_id, data, filename="photo.jpg", *,
-                     caption=None, parse_mode=None, timeout=30, raise_on_error=False):
+                     caption=None, parse_mode=None, timeout=30,
+                     raise_on_error=False, reply_markup=None):
     fields = {"chat_id": chat_id}
     if caption:
         fields["caption"] = caption
     if parse_mode:
         fields["parse_mode"] = parse_mode
+    if reply_markup:
+        fields["reply_markup"] = json.dumps(reply_markup)
     r = requests.post(
         f"https://api.telegram.org/bot{token}/sendPhoto",
         data=fields,
