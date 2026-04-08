@@ -1,0 +1,19 @@
+# Browser saved pages / local test files
+0408/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# Playwright output
+screenshots/
+
+# Local data files (may contain session state)
+591_storage.json
+591_seen_history.json
+591_rent_data.json
+fb_group_data.json
