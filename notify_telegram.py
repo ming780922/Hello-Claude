@@ -63,8 +63,16 @@ def main() -> None:
         print("Error: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set", file=sys.stderr)
         sys.exit(1)
 
+    if not os.path.exists(args.file):
+        print(f"No data file found at {args.file}, skipping notification.")
+        return
+
     with open(args.file, encoding="utf-8") as f:
         data = json.load(f)
+
+    if not data:
+        print("No new listings found, skipping notification.")
+        return
 
     if args.hours > 0:
         recent = [item for item in data if is_within_hours(item.get("update_time", ""), args.hours)]

@@ -276,6 +276,11 @@ async def main():
 
         await browser.close()
 
+    output_file = "591_rent_data.json"
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(all_items, f, ensure_ascii=False, indent=2)
+    print(f"\n資料已儲存至: {output_file}，共 {len(all_items)} 筆物件")
+
     if not all_items:
         return
 
@@ -292,12 +297,6 @@ async def main():
         print(f"  地區: {item['region']}")
         print(f"  更新時間: {item['update_time']}")
         print(f"  連結: {item['link']}")
-
-    output_file = "591_rent_data.json"
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(all_items, f, ensure_ascii=False, indent=2)
-    print(f"\n資料已儲存至: {output_file}")
-    print(f"總共抓取: {len(all_items)} 筆物件")
 
 
 if __name__ == "__main__":
