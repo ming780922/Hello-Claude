@@ -138,28 +138,56 @@ async def enrich_with_management_fees(context, items: list) -> None:
 
 
 async def crawl_591(context, url: str) -> list:
-    """單一網址爬取，回傳物件列表"""
-    page = await context.new_page()
-    log(f"訪問列表頁: {url}")
-    await page.goto(url)
-    await page.wait_for_timeout(2000)
-    try:
-        close_button = page.locator('button:has-text("×")').first
-        if await close_button.is_visible():
-            await close_button.click()
-    except:
-        pass
-    await page.evaluate("window.scrollTo(0, 1200)")
-    await page.wait_for_timeout(3000)
-    items = await page.evaluate(EXTRACT_JS)
+    """爬取所有分頁，回傳未看過的物件列表"""
+    all_unseen_items = []
+    max_pages = 50
     
-    # 過濾掉已看過的物件
-    unseen_items = [item for item in items if not item.get('is_seen')]
-    seen_count = len(items) - len(unseen_items)
-    
-    await page.close()
-    log(f"  列表結果: 總計 {len(items)} 筆 (已略過 {seen_count} 筆被 591 標記為看過的物件)")
-    return unseen_items
+    for page_idx in range(max_pages):
+        first_row = page_idx * 30
+        sep = "&" if "?" in url else "?"
+        page_url = f"{url}{sep}firstRow={first_row}"
+        
+        page = await context.new_page()
+        log(f"訪問列表 (第 {page_idx + 1} 頁): {page_url}")
+        
+        try:
+            await page.goto(page_url)
+            await page.wait_for_timeout(2000)
+            try:
+                close_button = page.locator('button:has-text("×")').first
+                if await close_button.is_visible():
+                    await close_button.click()
+            except:
+                pass
+            
+            await page.evaluate("window.scrollTo(0, 1200)")
+            await page.wait_for_timeout(3000)
+            items = await page.evaluate(EXTRACT_JS)
+            
+            if not items:
+                log(f"  第 {page_idx + 1} 頁無資料，停止換頁")
+                await page.close()
+                break
+                
+            # 過濾掉已看過的物件
+            unseen_items = [item for item in items if not item.get('is_seen')]
+            seen_count = len(items) - len(unseen_items)
+            
+            all_unseen_items.extend(unseen_items)
+            log(f"  列表結果: 總計 {len(items)} 筆 (已略過 {seen_count} 筆被 591 標記為看過的物件)")
+            
+            # 如果抓到的筆數小於 30，表示已經是最後一頁
+            if len(items) < 30:
+                log("  已到達最後一頁")
+                await page.close()
+                break
+                
+        except Exception as e:
+            log(f"  抓取分頁 {page_idx + 1} 失敗: {e}")
+        finally:
+            await page.close()
+            
+    return all_unseen_items
 
 
 def log(message: str):
