@@ -6,8 +6,10 @@
 import asyncio
 import csv
 import io
-import json
 import os
+import json
+import asyncio
+from datetime import datetime
 from pathlib import Path
 import requests
 from playwright.async_api import async_playwright
@@ -48,6 +50,17 @@ EXTRACT_JS = """
             const lineEls = Array.from(item.querySelectorAll('span.line'));
             const updateEl = lineEls.find(el => el.textContent.includes('更新'));
             const updateTime = updateEl ? updateEl.textContent.trim() : '';
+
+            // 判斷是否為已看過的物件 (淡化效果)
+            // 591 通常會對已讀取的物件標題或容器加入 is-view 或 visited 類別，
+            // 或者透過樣式 (如 opacity 或 color) 來呈現淡化效果。
+            const titleLink = item.querySelector('a');
+            const isSeen = item.classList.contains('is-view') || 
+                           item.classList.contains('visited') ||
+                           titleLink?.classList.contains('is-view') ||
+                           titleLink?.classList.contains('visited') ||
+                           getComputedStyle(item).opacity < 1;
+
             return {
                 id: dataId,
                 title: title,
@@ -58,7 +71,8 @@ EXTRACT_JS = """
                 region: region,
                 update_time: updateTime,
                 image: image,
-                link: link
+                link: link,
+                is_seen: isSeen
             };
         });
     }
@@ -74,13 +88,13 @@ MGMT_FEE_JS = """
 """
 
 
-async def fetch_detail_data(browser, url: str, item_id: str, screenshots_dir: Path) -> tuple:
+async def fetch_detail_data(context, url: str, item_id: str, screenshots_dir: Path) -> tuple:
     """Fetch management fee and take a screenshot from the detail page.
     Returns (management_fee: str, screenshot_path: str | None).
     """
     if not url or not item_id:
         return '', None
-    page = await browser.new_page()
+    page = await context.new_page()
     screenshot_path = None
     try:
         await page.goto(url, wait_until='load', timeout=20000)
@@ -104,15 +118,18 @@ async def fetch_detail_data(browser, url: str, item_id: str, screenshots_dir: Pa
         await page.close()
 
 
-async def enrich_with_management_fees(browser, items: list) -> None:
+async def enrich_with_management_fees(context, items: list) -> None:
     screenshots_dir = Path("screenshots")
     screenshots_dir.mkdir(exist_ok=True)
     semaphore = asyncio.Semaphore(3)
 
     async def fetch_one(item):
         async with semaphore:
+            item_url = item.get('link', '')
+            item_id = item.get('id', '')
+            log(f"    正在抓取詳細資料 [{item_id}]: {item.get('title')}")
             mgmt_fee, screenshot_path = await fetch_detail_data(
-                browser, item.get('link', ''), item.get('id', ''), screenshots_dir
+                context, item_url, item_id, screenshots_dir
             )
             item['management_fee'] = mgmt_fee
             item['screenshot_path'] = screenshot_path
@@ -120,40 +137,172 @@ async def enrich_with_management_fees(browser, items: list) -> None:
     await asyncio.gather(*[fetch_one(item) for item in items])
 
 
-async def crawl_591(browser, url: str) -> list:
-    """單一網址爬取，回傳物件列表"""
-    page = await browser.new_page()
-    print(f"正在訪問: {url}")
-    await page.goto(url)
-    await page.wait_for_timeout(2000)
+async def crawl_591(context, url: str) -> list:
+    """爬取所有分頁，回傳未看過的物件列表"""
+    all_unseen_items = []
+    max_pages = 50
+    
+    for page_idx in range(max_pages):
+        first_row = page_idx * 30
+        sep = "&" if "?" in url else "?"
+        page_url = f"{url}{sep}firstRow={first_row}"
+        
+        page = await context.new_page()
+        log(f"訪問列表 (第 {page_idx + 1} 頁): {page_url}")
+        
+        try:
+            await page.goto(page_url)
+            await page.wait_for_timeout(2000)
+            try:
+                close_button = page.locator('button:has-text("×")').first
+                if await close_button.is_visible():
+                    await close_button.click()
+            except:
+                pass
+            
+            await page.evaluate("window.scrollTo(0, 1200)")
+            await page.wait_for_timeout(3000)
+            items = await page.evaluate(EXTRACT_JS)
+            
+            if not items:
+                log(f"  第 {page_idx + 1} 頁無資料，停止換頁")
+                await page.close()
+                break
+                
+            # 過濾掉已看過的物件
+            unseen_items = [item for item in items if not item.get('is_seen')]
+            seen_count = len(items) - len(unseen_items)
+            
+            all_unseen_items.extend(unseen_items)
+            log(f"  列表結果: 總計 {len(items)} 筆 (已略過 {seen_count} 筆被 591 標記為看過的物件)")
+            
+            # 如果抓到的筆數小於 30，表示已經是最後一頁
+            if len(items) < 30:
+                log("  已到達最後一頁")
+                await page.close()
+                break
+                
+        except Exception as e:
+            log(f"  抓取分頁 {page_idx + 1} 失敗: {e}")
+        finally:
+            await page.close()
+            
+    return all_unseen_items
+
+
+def log(message: str):
+    """帶時間戳記的 Log"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{now}] {message}")
+
+
+def load_cookies_or_storage():
+    """載入 cookies 或 storage state"""
+    storage_file = Path("591_storage.json")
+    if storage_file.exists():
+        log(f"找到瀏覽器狀態檔: {storage_file}")
+        return {"storage_state": str(storage_file)}
+    
+    # 如果沒有 storage 檔，嘗試從 591_cookies.json 載入 (用於初始登入)
+    cookie_file = Path("591_cookies.json")
+    if cookie_file.exists():
+        try:
+            with open(cookie_file, "r") as f:
+                cookies = json.load(f)
+                log(f"從 {cookie_file} 注入 {len(cookies)} 個初始 cookies")
+                return {"cookies": cookies}
+        except Exception as e:
+            log(f"載入 Cookies 失敗: {e}")
+            
+    # 最後嘗試從環境變數載入 (適合 CI)
+    env_cookies = os.environ.get("591_COOKIES_JSON")
+    if env_cookies:
+        try:
+            cookies = json.loads(env_cookies)
+            log(f"從環境變數注入 {len(cookies)} 個初始 cookies")
+            return {"cookies": cookies}
+        except Exception as e:
+            log(f"從環境變數載入 Cookies 失敗: {e}")
+            
+    log("未找到任何登入資訊，將以遊客身份爬取")
+    return {}
+
+
+def load_history():
+    """載入歷史看過的 ID"""
+    history_file = Path("591_seen_history.json")
+    if history_file.exists():
+        try:
+            with open(history_file, "r") as f:
+                history = set(json.load(f))
+                log(f"找到歷史記錄，載入 {len(history)} 筆已看過的 ID")
+                return history
+        except Exception as e:
+            log(f"載入歷史記錄失敗: {e}")
+    return set()
+
+
+def save_history(history):
+    """儲存歷史看過的 ID"""
     try:
-        close_button = page.locator('button:has-text("×")').first
-        if await close_button.is_visible():
-            await close_button.click()
-    except:
-        pass
-    await page.evaluate("window.scrollTo(0, 1200)")
-    await page.wait_for_timeout(3000)
-    items = await page.evaluate(EXTRACT_JS)
-    await page.close()
-    print(f"  抓到 {len(items)} 筆")
-    return items
+        with open("591_seen_history.json", "w") as f:
+            json.dump(list(history), f)
+        log(f"已更新歷史記錄 (目前共 {len(history)} 筆)")
+    except Exception as e:
+        log(f"儲存歷史記錄失敗: {e}")
 
 
 async def main():
+    log("開始執行 591 爬蟲程式...")
     all_items = []
-    seen_ids = set()
+    # 載入本地歷史記錄 (包含以前爬過的)
+    all_time_seen = load_history()
+    seen_ids = set() # 本次運算中已處理過的
 
     async with async_playwright() as p:
+        log("啟動 Playwright 瀏覽器...")
         browser = await p.chromium.launch(headless=True)
+        
+        # 取得初始狀態 (Storage 或 Cookies)
+        setup_params = load_cookies_or_storage()
+        
+        # 建立 context
+        if "storage_state" in setup_params:
+            context = await browser.new_context(storage_state=setup_params["storage_state"])
+        else:
+            context = await browser.new_context()
+            if "cookies" in setup_params:
+                await context.add_cookies(setup_params["cookies"])
+        
         for url in URLS:
-            items = await crawl_591(browser, url)
+            items = await crawl_591(context, url)
             for item in items:
-                if item["id"] not in seen_ids:
-                    seen_ids.add(item["id"])
+                item_id = item["id"]
+                # 如果已經在歷史記錄中 (或是本次已處理過)，則略過
+                if item_id in all_time_seen:
+                    # 可以在此處加靜默 Log，避免輸出太多
+                    continue
+                
+                if item_id not in seen_ids:
+                    seen_ids.add(item_id)
+                    all_time_seen.add(item_id) # 同時加入歷史記錄
                     all_items.append(item)
-        print(f"\n正在抓取 {len(all_items)} 筆物件的管理費資訊...")
-        await enrich_with_management_fees(browser, all_items)
+                    
+        if not all_items:
+            log("未發現任何新物件，結束程式。")
+            await browser.close()
+            return
+
+        log(f"本次發現 {len(all_items)} 筆新物件，開始抓取詳細資訊...")
+        await enrich_with_management_fees(context, all_items)
+        
+        # 儲存最新的瀏覽器狀態 (包含更新後的 cookies/session)
+        await context.storage_state(path="591_storage.json")
+        log(f"已更新瀏覽器狀態至: 591_storage.json")
+        
+        # 儲存歷史看過的 ID
+        save_history(all_time_seen)
+        
         await browser.close()
 
     print(f"\n合計抓取 {len(all_items)} 筆（已去重）\n")
