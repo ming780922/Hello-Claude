@@ -29,6 +29,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Restore persistence files
+        uses: actions/cache@v3
+        with:
+          path: |
+            591_storage.json
+            591_seen_history.json
+          key: 591-crawler-persistence-${{ github.run_id }}
+          restore-keys: |
+            591-crawler-persistence-
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
@@ -37,6 +47,7 @@ jobs:
       - name: Run crawler
         env:
           SHEET_591_URL: ${{ secrets.SHEET_591_URL }}
+          591_COOKIES_JSON: ${{ secrets.COOKIES_591_JSON }}
         run: python crawler_591.py
 
       - name: Run Telegram notifier
@@ -49,5 +60,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rent-data-${{ github.run_number }}
-          path: 591_rent_data.json
+          path: |
+            591_rent_data.json
+            591_storage.json
+            591_seen_history.json
 
