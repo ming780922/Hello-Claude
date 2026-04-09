@@ -41,7 +41,7 @@ EXTRACT_JS = """
             const area = areaMatch ? areaMatch[1] : '';
             const floorMatch = allText.match(/(\\d+F\\/\\d+F)/);
             const floor = floorMatch ? floorMatch[1] : '';
-            const regionMatch = allText.match(/([^\s]{2,4}[區鄉鎮])/);
+            const regionMatch = allText.match(/([^\\s]{2,4}[區鄉鎮])/);
             const region = regionMatch ? regionMatch[1] : '';
             const lineEls = Array.from(item.querySelectorAll('span.line'));
             const updateEl = lineEls.find(el => el.textContent.includes('更新'));
