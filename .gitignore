@@ -17,3 +17,6 @@ screenshots/
 591_seen_history.json
 591_rent_data.json
 fb_group_data.json
+
+.gemini/
+gha-creds-*.json
