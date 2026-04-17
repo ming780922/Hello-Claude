@@ -39,6 +39,7 @@ function tgSendWithMarkup(token, chatId, caption, itemId) {
 // ── GitHub dispatch helper ────────────────────────────────────────────────────
 
 async function dispatch(env, eventType, payload = {}) {
+  console.log(`[dispatch] event_type=${eventType} repo=${env.GITHUB_REPO} token_set=${!!env.GITHUB_TOKEN}`);
   const resp = await fetch(
     `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`,
     {
@@ -52,9 +53,10 @@ async function dispatch(env, eventType, payload = {}) {
       body: JSON.stringify({ event_type: eventType, client_payload: payload }),
     }
   );
+  console.log(`[dispatch] response status=${resp.status} event_type=${eventType}`);
   if (!resp.ok) {
     const err = await resp.text();
-    console.error(`GitHub dispatch failed (${eventType}):`, err);
+    console.error(`[dispatch] FAILED status=${resp.status} event_type=${eventType} body=${err}`);
   }
   return resp;
 }
@@ -118,12 +120,18 @@ async function handleCallback(cq, env) {
 
 export default {
   async scheduled(event, env, ctx) {
-    if (event.cron === "0 0-16 * * *") {
-      await dispatch(env, "cron-591-rent");
-    } else if (event.cron === "0 1 * * *") {
-      await dispatch(env, "cron-fb-group");
-    } else {
-      await dispatch(env, "cron-ptt-crawler");
+    console.log(`[scheduled] cron="${event.cron}" scheduledTime=${event.scheduledTime}`);
+    try {
+      if (event.cron === "0 0-16 * * *") {
+        await dispatch(env, "cron-591-rent");
+      } else if (event.cron === "0 1 * * *") {
+        await dispatch(env, "cron-fb-group");
+      } else {
+        await dispatch(env, "cron-ptt-crawler");
+      }
+      console.log(`[scheduled] done cron="${event.cron}"`);
+    } catch (err) {
+      console.error(`[scheduled] ERROR cron="${event.cron}"`, err);
     }
   },
 
