@@ -36,6 +36,18 @@ function tgSendWithMarkup(token, chatId, caption, itemId) {
   });
 }
 
+async function checkListingExists(itemId) {
+  try {
+    const resp = await fetch(`https://rent.591.com.tw/${itemId}`, {
+      redirect: "follow",
+      headers: { "User-Agent": "Mozilla/5.0 (compatible)" },
+    });
+    return resp.url.includes(String(itemId));
+  } catch {
+    return true;
+  }
+}
+
 // ── GitHub dispatch helper ────────────────────────────────────────────────────
 
 async function dispatch(env, eventType, payload = {}) {
@@ -199,8 +211,38 @@ export default {
 
           if (!results.length) {
             await tgSend(env.TELEGRAM_BOT_TOKEN, chatId, "目前沒有儲存的物件。");
+            return;
+          }
+
+          const checks = await Promise.all(
+            results.map(async (row) => ({
+              row,
+              exists: await checkListingExists(row.item_id),
+            }))
+          );
+
+          const removed = checks.filter((c) => !c.exists);
+          const active = checks.filter((c) => c.exists);
+
+          if (removed.length > 0) {
+            await Promise.all(
+              removed.map((c) =>
+                env.DB.prepare(
+                  "DELETE FROM saved_listings WHERE item_id = ? AND chat_id = ?"
+                ).bind(c.row.item_id, String(chatId)).run()
+              )
+            );
+            await tgSend(
+              env.TELEGRAM_BOT_TOKEN,
+              chatId,
+              `⚠️ 已自動移除 ${removed.length} 個已下架的物件。`
+            );
+          }
+
+          if (!active.length) {
+            await tgSend(env.TELEGRAM_BOT_TOKEN, chatId, "目前沒有儲存的物件。");
           } else {
-            for (const row of results) {
+            for (const { row } of active) {
               await tgSendWithMarkup(env.TELEGRAM_BOT_TOKEN, chatId, row.caption, row.item_id);
             }
           }
