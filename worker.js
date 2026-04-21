@@ -194,16 +194,18 @@ export default {
       ctx.waitUntil(
         (async () => {
           const { results } = await env.DB.prepare(
-            "SELECT * FROM saved_listings WHERE chat_id = ? ORDER BY saved_at DESC"
+            "SELECT item_id, caption FROM saved_listings WHERE chat_id = ? ORDER BY saved_at DESC"
           ).bind(String(chatId)).all();
 
           if (!results.length) {
             await tgSend(env.TELEGRAM_BOT_TOKEN, chatId, "目前沒有儲存的物件。");
-          } else {
-            for (const row of results) {
-              await tgSendWithMarkup(env.TELEGRAM_BOT_TOKEN, chatId, row.caption, row.item_id);
-            }
+            return;
           }
+
+          await dispatch(env, "telegram-saved", {
+            chat_id: String(chatId),
+            listings: results,
+          });
         })()
       );
     }
