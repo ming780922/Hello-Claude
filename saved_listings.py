@@ -21,7 +21,9 @@ def check_listing_exists(item_id):
             timeout=10,
             headers={"User-Agent": "Mozilla/5.0 (compatible)"},
         )
-        return str(item_id) in resp.url
+        if resp.status_code >= 400:
+            return False
+        return "物件不存在" not in resp.text
     except Exception:
         return True  # assume still exists on error
 
