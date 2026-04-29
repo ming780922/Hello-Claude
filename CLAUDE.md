@@ -24,6 +24,7 @@ python yt_channel_monitor.py   # Monitor YouTube channel → Telegram
 python crawler_fb_group.py     # Scrape public FB group → fb_group_data.json
 python notify_fb_group.py      # Send FB group results to Telegram (requires env vars)
 # crawler_591_bot.py is triggered only via GitHub Actions with SUBSCRIPTIONS env var
+python export_to_sheet.py      # Export saved listings to Google Sheet (triggered via /export Telegram command)
 ```
 
 ### Cloudflare Worker
@@ -85,6 +86,8 @@ Telegram Bot API  (sends results back to user)
 | `YT_KEYWORD` | yt-monitor |
 | `SHEET_591_URL` | 591-rent (Google Sheet URL for subscription data) |
 | `COOKIES_591_JSON` | 591-rent (session cookies for crawler_591.py, see `591_cookies_template.json`) |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | export-to-sheet (GCP service account JSON with Google Sheets API access) |
+| `EXPORT_SHEET_ID` | export-to-sheet (Google Sheet ID to export saved listings into; share sheet with service account email) |
 
 ### Cloudflare Worker Environment Variables
 

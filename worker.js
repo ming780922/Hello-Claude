@@ -202,6 +202,18 @@ export default {
           await tgSendWithMarkup(env.TELEGRAM_BOT_TOKEN, chatId, row.caption, row.item_id);
         }
       }
+
+    } else if (text.startsWith("/export")) {
+      const { results } = await env.DB.prepare(
+        "SELECT item_id, caption, saved_at FROM saved_listings WHERE chat_id = ? ORDER BY saved_at DESC"
+      ).bind(String(chatId)).all();
+
+      if (!results.length) {
+        await tgSend(env.TELEGRAM_BOT_TOKEN, chatId, "目前沒有儲存的物件，無法匯出。");
+      } else {
+        await tgSend(env.TELEGRAM_BOT_TOKEN, chatId, `找到 ${results.length} 筆儲存物件，正在確認上架狀態並匯出至 Google 試算表，請稍候…`);
+        await dispatch(env, "telegram-export", { chat_id: chatId, listings: results });
+      }
     }
 
     return new Response("OK");
