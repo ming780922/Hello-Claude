@@ -23,6 +23,17 @@ HEADERS = {
     "Accept-Language": "zh-TW,zh;q=0.9",
 }
 
+# If set, listing page requests are routed through the Cloudflare Worker proxy
+# to bypass CloudFront IP blocks on GitHub Actions.
+WORKER_URL = os.environ.get("WORKER_URL", "").rstrip("/")
+
+
+def proxied(url: str) -> str:
+    """Return the proxy URL for a 591 listing page if WORKER_URL is set."""
+    if WORKER_URL:
+        return f"{WORKER_URL}/proxy/591?url={requests.utils.quote(url, safe='')}"
+    return url
+
 
 def log(message: str):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -122,7 +133,7 @@ def fetch_page(url: str, page_idx: int) -> list:
     page_url = f"{url}{sep}firstRow={page_idx * 30}"
     log(f"訪問列表 (第 {page_idx + 1} 頁): {page_url}")
     try:
-        r = requests.get(page_url, headers=HEADERS, timeout=15)
+        r = requests.get(proxied(page_url), headers=HEADERS, timeout=15)
         r.raise_for_status()
         items = parse_items(r.text)
         log(f"  第 {page_idx + 1} 頁抓到 {len(items)} 筆")

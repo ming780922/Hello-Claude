@@ -44,6 +44,7 @@ jobs:
       - name: Run crawler
         env:
           SHEET_591_URL: ${{ secrets.SHEET_591_URL }}
+          WORKER_URL: ${{ secrets.WORKER_URL }}
         run: python crawler_591_requests.py
 
       - name: Run Telegram notifier

@@ -138,7 +138,9 @@ export default {
   async fetch(request, env, ctx) {
     // GET 路由：RSS Feed 代理（繞過 PTT IP 封鎖）
     if (request.method === "GET") {
-      const { pathname } = new URL(request.url);
+      const url = new URL(request.url);
+      const { pathname } = url;
+
       if (pathname === "/rss/LifeIsMoney") {
         const resp = await fetch("https://www.ptt.cc/atom/LifeIsMoney.xml", {
           headers: { Cookie: "over18=1", "User-Agent": "Mozilla/5.0" },
@@ -149,6 +151,27 @@ export default {
           headers: { "Content-Type": "application/atom+xml; charset=utf-8" },
         });
       }
+
+      // 591 listing proxy（繞過 CloudFront IP 封鎖）
+      if (pathname === "/proxy/591") {
+        const target = url.searchParams.get("url");
+        if (!target || !target.startsWith("https://rent.591.com.tw/")) {
+          return new Response("Bad Request", { status: 400 });
+        }
+        const resp = await fetch(target, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "zh-TW,zh;q=0.9",
+          },
+        });
+        if (!resp.ok) return new Response("Bad Gateway", { status: resp.status });
+        const html = await resp.text();
+        return new Response(html, {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
+      }
+
       return new Response("Not Found", { status: 404 });
     }
 
