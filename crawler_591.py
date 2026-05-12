@@ -174,37 +174,6 @@ async def crawl_591(context, url: str) -> list:
     return all_items
 
 
-def load_cookies_or_storage():
-    """載入 cookies 或 storage state"""
-    storage_file = Path("591_storage.json")
-    if storage_file.exists():
-        log(f"找到瀏覽器狀態檔: {storage_file}")
-        return {"storage_state": str(storage_file)}
-    
-    # 如果沒有 storage 檔，嘗試從 591_cookies.json 載入 (用於初始登入)
-    cookie_file = Path("591_cookies.json")
-    if cookie_file.exists():
-        try:
-            with open(cookie_file, "r") as f:
-                cookies = json.load(f)
-                log(f"從 {cookie_file} 注入 {len(cookies)} 個初始 cookies")
-                return {"cookies": cookies}
-        except Exception as e:
-            log(f"載入 Cookies 失敗: {e}")
-            
-    # 最後嘗試從環境變數載入 (適合 CI)
-    env_cookies = os.environ.get("591_COOKIES_JSON")
-    if env_cookies:
-        try:
-            cookies = json.loads(env_cookies)
-            log(f"從環境變數注入 {len(cookies)} 個初始 cookies")
-            return {"cookies": cookies}
-        except Exception as e:
-            log(f"從環境變數載入 Cookies 失敗: {e}")
-            
-    log("未找到任何登入資訊，將以遊客身份爬取")
-    return {}
-
 
 def load_history():
     """載入歷史看過的 ID"""
@@ -244,14 +213,7 @@ async def main():
         log("啟動 Playwright 瀏覽器...")
         browser = await p.chromium.launch(headless=True)
 
-        setup_params = load_cookies_or_storage()
-
-        if "storage_state" in setup_params:
-            context = await browser.new_context(storage_state=setup_params["storage_state"])
-        else:
-            context = await browser.new_context()
-            if "cookies" in setup_params:
-                await context.add_cookies(setup_params["cookies"])
+        context = await browser.new_context()
 
         for url in urls:
             items = await crawl_591(context, url)
@@ -269,9 +231,6 @@ async def main():
         else:
             log("未發現任何新物件。")
 
-        # 無論有無新物件，都儲存 state
-        await context.storage_state(path="591_storage.json")
-        log("已更新瀏覽器狀態至: 591_storage.json")
         save_history(all_time_seen)
 
         await browser.close()
