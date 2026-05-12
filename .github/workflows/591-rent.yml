@@ -33,7 +33,6 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            591_storage.json
             591_seen_history.json
           key: 591-crawler-persistence-${{ github.run_id }}
           restore-keys: |
@@ -58,10 +57,11 @@ jobs:
 
       - name: Upload results
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: rent-data-${{ github.run_number }}
           path: |
             591_rent_data.json
-            591_storage.json
             591_seen_history.json
+            debug_page_*.png
 

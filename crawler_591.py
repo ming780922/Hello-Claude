@@ -142,7 +142,11 @@ async def crawl_591(context, url: str) -> list:
         log(f"訪問列表 (第 {page_idx + 1} 頁): {page_url}")
 
         try:
-            await page.goto(page_url)
+            await page.goto(page_url, wait_until="domcontentloaded")
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
             await page.wait_for_timeout(2000)
             try:
                 close_button = page.locator('button:has-text("×")').first
@@ -158,6 +162,12 @@ async def crawl_591(context, url: str) -> list:
 
             if not items:
                 log(f"  第 {page_idx + 1} 頁無資料，停止換頁")
+                try:
+                    debug_path = f"debug_page_{page_idx + 1}.png"
+                    await page.screenshot(path=debug_path, full_page=False)
+                    log(f"  已儲存 debug 截圖: {debug_path}")
+                except Exception:
+                    pass
                 break
 
             all_items.extend(items)
@@ -211,9 +221,20 @@ async def main():
 
     async with async_playwright() as p:
         log("啟動 Playwright 瀏覽器...")
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ],
+        )
 
-        context = await browser.new_context()
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800},
+            locale="zh-TW",
+        )
 
         for url in urls:
             items = await crawl_591(context, url)
