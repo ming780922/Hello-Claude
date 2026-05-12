@@ -39,15 +39,12 @@ jobs:
             591-crawler-persistence-
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install chromium --with-deps
+        run: pip install -r requirements.txt
 
       - name: Run crawler
         env:
           SHEET_591_URL: ${{ secrets.SHEET_591_URL }}
-          591_COOKIES_JSON: ${{ secrets.COOKIES_591_JSON }}
-        run: python crawler_591.py
+        run: python crawler_591_requests.py
 
       - name: Run Telegram notifier
         run: python notify_telegram.py
@@ -63,5 +60,4 @@ jobs:
           path: |
             591_rent_data.json
             591_seen_history.json
-            debug_page_*.png
 
