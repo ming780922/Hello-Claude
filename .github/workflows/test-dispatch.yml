@@ -1,0 +1,16 @@
+name: Test Dispatch
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [scrape, results-scrape]
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log trigger info
+        run: |
+          echo "Triggered by: ${{ github.event_name }}"
+          echo "Event type:   ${{ github.event.action }}"
+          echo "Triggered at: ${{ github.event.repository_dispatch.created_at || github.event.head_commit.timestamp || 'manual' }}"
