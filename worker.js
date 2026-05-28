@@ -126,6 +126,8 @@ export default {
         await dispatch(env, "cron-591-rent");
       } else if (event.cron === "0 1 * * *") {
         await dispatch(env, "cron-fb-group");
+      } else if (event.cron === "0 19 * * *") {
+        await dispatch(env, "check-basketball-schedule");
       } else {
         await dispatch(env, "cron-ptt-crawler");
       }

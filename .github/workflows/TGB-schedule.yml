@@ -1,0 +1,41 @@
+name: Basketball Schedule Check
+
+on:
+  repository_dispatch:
+    types: [check-basketball-schedule]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm ci
+
+      - name: Restore schedule snapshot
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/basketball-schedule.json
+          key: basketball-snapshot
+
+      - name: Check schedule
+        env:
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          SHEET_GID: ${{ secrets.SHEET_GID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_DEFAULT_CHAT_ID }}
+          MY_TEAM: ${{ secrets.MY_TEAM }}
+          SNAPSHOT_PATH: /tmp/basketball-schedule.json
+        run: node scripts/check-basketball-schedule.js
+
+      - name: Save schedule snapshot
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/basketball-schedule.json
+          key: basketball-snapshot-${{ github.run_id }}
