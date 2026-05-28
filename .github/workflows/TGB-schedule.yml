@@ -16,8 +16,6 @@ jobs:
         with:
           node-version: '20'
 
-      - run: npm ci
-
       - name: Restore schedule snapshot
         uses: actions/cache/restore@v4
         with:
