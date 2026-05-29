@@ -1,1 +1,58 @@
-[]
+[
+  {
+    "dateStr": "2026/3/14",
+    "timeStr": "18:00",
+    "location": "和平暖A",
+    "group": "C5",
+    "team1": "GOAT",
+    "team2": "師大公鹿"
+  },
+  {
+    "dateStr": "2026/3/21",
+    "timeStr": "19:00",
+    "location": "和平暖A",
+    "group": "C5",
+    "team1": "師大公鹿",
+    "team2": "TaoTaoTeaX海底寶"
+  },
+  {
+    "dateStr": "2026/3/7",
+    "timeStr": "12:00",
+    "location": "金華",
+    "group": "C5",
+    "team1": "師大公鹿",
+    "team2": "Tonight餐酒館"
+  },
+  {
+    "dateStr": "2026/4/25",
+    "timeStr": "10:00",
+    "location": "金華",
+    "group": "C5",
+    "team1": "西灣少年",
+    "team2": "師大公鹿"
+  },
+  {
+    "dateStr": "2026/5/9",
+    "timeStr": "20:00",
+    "location": "和平高中",
+    "group": "C5",
+    "team1": "師大公鹿",
+    "team2": "520"
+  },
+  {
+    "dateStr": "2026/6/20",
+    "timeStr": "19:00",
+    "location": "和平暖B",
+    "group": "C5",
+    "team1": "葳橋資訊",
+    "team2": "師大公鹿"
+  },
+  {
+    "dateStr": "2026/7/4",
+    "timeStr": "16:00",
+    "location": "和平暖B",
+    "group": "C5",
+    "team1": "OG老司機",
+    "team2": "師大公鹿"
+  }
+]
